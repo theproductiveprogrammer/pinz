@@ -106,12 +106,16 @@ async function cmdImageSet(username, file) {
   console.log(`picture set: ${rel}`);
 }
 
-// flow: terminal — `pinz-admin image position <name> "50% 20%"` <-- HERE
+// flow: terminal — `pinz-admin image position <name> "50% 20% [64px 64px]"` <-- HERE
 async function cmdImagePosition(username, pos) {
   if (!await findUser(username)) die(`no such user "${username}"`);
-  if (!pos || !/^[a-z0-9% .-]{1,40}$/i.test(pos)) die('position must be a CSS object-position value, e.g. "50% 20%"');
-  await mutateUserDoc(username, doc => { doc.info.picture_position = pos; });
-  console.log(`picture position set: ${pos}`);
+  const LEN = /^\d+(\.\d+)?(%|px|rem|em|vw|vh)$/;
+  const tokens = String(pos ?? '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2 || tokens.length > 4 || !tokens.every(t => LEN.test(t))) {
+    die('position is "x y" with optional size "w h" — CSS lengths, e.g. "50% 20%" or "50% 20% 64px 64px"');
+  }
+  await mutateUserDoc(username, doc => { doc.info.picture_position = tokens.join(' '); });
+  console.log(`picture position set: ${tokens.join(' ')}`);
 }
 
 function usage() {
@@ -122,7 +126,7 @@ function usage() {
   user list                      list accounts
   user rm <username>             remove an account (data file kept)
   image set <username> <file>    copy an image into data/ and use it
-  image position <username> "<x% y%>"   set the image crop (CSS object-position)`);
+  image position <username> "<x y [w h]>"   place (and size) the image, e.g. "50% 20% 64px 64px"`);
   process.exit(2);
 }
 

@@ -90,11 +90,16 @@ ${links.map(linkItem).join('\n')}
 </details>`;
 }
 
-// The problem is picture_position comes from a hand-editable YAML file but lands in a
-// style attribute. The way we solve this is only accepting a plain CSS position token
-// and falling back to center otherwise.
-function safePosition(pos) {
-  return typeof pos === 'string' && /^[a-z0-9% .-]{1,40}$/i.test(pos) ? pos : 'center';
+// The problem is picture_position places and sizes the image anywhere on the page
+// ("X% Y% [W [H]]"), but it comes from a hand-editable YAML file and lands in a style
+// attribute. The way we solve this is accepting only bare CSS lengths, falling back
+// to a top-right thumbnail when absent or invalid. Height defaults to width (square).
+function photoStyle(pos) {
+  const LEN = /^\d+(?:\.\d+)?(?:%|px|rem|em|vw|vh)$/;
+  const t = String(pos ?? '').trim().split(/\s+/).filter(Boolean);
+  const ok = t.length >= 2 && t.length <= 4 && t.every(v => LEN.test(v));
+  const [x = '85%', y = '22%', w = '12rem', h] = ok ? t : [];
+  return `left:${x};top:${y};width:${w};height:${h ?? w}`;
 }
 
 const NOTICES = {
@@ -136,7 +141,7 @@ ${archived.map(linkItem).join('\n')}
 </ul>
 </details>` : ''}
   </section>
-  ${doc.info.picture ? `<aside><figure class="photo"><span class="pinhead"></span><img src="/img" alt="" style="object-position:${escapeHtml(safePosition(doc.info.picture_position))}"></figure></aside>` : ''}
+  ${doc.info.picture ? `<figure class="photo" style="${escapeHtml(photoStyle(doc.info.picture_position))}"><img src="/img" alt=""></figure>` : ''}
 </main>
 <dialog id="pin-dialog">
   <form method="post" action="/add" id="pin-form">

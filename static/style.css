@@ -107,11 +107,7 @@ button.quiet:hover { color: var(--accent); }
 
 /* ---------- the board: airy rows, no rules, no counts ---------- */
 
-main { display: grid; grid-template-columns: 1fr; gap: 2rem; }
-@media (min-width: 46rem) {
-  main:has(aside) { grid-template-columns: 1fr 12rem; align-items: start; }
-  aside { position: sticky; top: 1.5rem; }
-}
+main { display: block; }
 
 details.tag { padding: 0.65rem 0; }
 details.tag > summary {
@@ -147,11 +143,20 @@ details.archive { margin-top: 2.25rem; }
 details.archive > summary { color: var(--muted); font-weight: 400; }
 li.done a { color: var(--muted); text-decoration: line-through; }
 
-/* ---------- photo: flat, hard frame ---------- */
+/* ---------- photo: floats wherever picture_position puts it ----------
+   Inline style from the YAML supplies left/top/width/height ("X% Y% [W [H]]");
+   the image is centered on that point and stays put while scrolling. */
 
-.photo { margin: 0.5rem 0 0; padding: 0; border: 2px solid var(--rule); border-radius: 0; background: none; }
-.photo img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
-.pinhead { display: none; }
+.photo {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--rule);
+  border-radius: 0;
+  background: var(--bg);
+}
+.photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- dialog ---------- */
 
