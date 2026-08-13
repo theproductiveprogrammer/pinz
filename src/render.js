@@ -140,7 +140,7 @@ ${archived.map(linkItem).join('\n')}
     <input type="hidden" name="orig" value="">
     <input id="add-link" name="link" type="url" placeholder="https://…" required>
     <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">
-    <input id="add-tags" name="tags" list="all-tags" placeholder="tags, comma, separated">
+    <input id="add-tags" name="tags" list="all-tags" placeholder="tags (space or comma separated)">
     <datalist id="all-tags">${allTags.map(t => `<option value="${escapeHtml(t)}">`).join('')}</datalist>
     <div class="actions">
       <button type="button" class="quiet" id="pin-cancel">cancel</button>

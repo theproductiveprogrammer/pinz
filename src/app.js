@@ -40,12 +40,14 @@ export function createApp() {
   }));
 
   // Shared by /add and /edit: the validated fields of the pin dialog.
+  // Tags split on commas AND whitespace — "atlas dev" is two tags, not one
+  // tag with a space in it (tags are hashtag-shaped, never multi-word).
   function pinFields(body) {
     const url = parseHttpUrl(body?.link);
     return url && {
       link: url.href,
       title: String(body?.title ?? '').trim(),
-      tags: String(body?.tags ?? '').split(',').map(normalizeTag).filter(Boolean),
+      tags: String(body?.tags ?? '').split(/[\s,]+/).map(normalizeTag).filter(Boolean),
     };
   }
 
