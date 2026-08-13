@@ -41,24 +41,42 @@ run = "node bin/pinz-admin.js"
 # Convention: bare task names act locally; server:* tasks touch production.
 
 [tasks."server:image"]
-description = 'Upload your pinz picture to prod: mise run server:image -- <file> ["50% 20%"]'
+description = 'Upload a pinz picture to prod: mise run server:image -- <file> [user] ["50% 20%"] (any order; user defaults to you)'
+# Args are told apart by shape: an existing path is the file, something with a
+# "%" is the crop position, anything else is the username.
+# mise appends task args to the LAST line of the script, so the body lives in
+# a function and the final line receives them as real "$@".
 run = '''
-test -f "$1" || { echo 'usage: mise run server:image -- <file> ["x% y%"]'; exit 1; }
-ext="${1##*.}"
-scp "$1" "$PINZ_SERVER:/tmp/pinz-upload.$ext"
-ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image set $PINZ_USER /tmp/pinz-upload.$ext && rm /tmp/pinz-upload.$ext"
-if [ -n "$2" ]; then
-  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $PINZ_USER '$2'"
-fi
-echo "done — refresh https://pinz.charleslobo.com"
-'''
+upload() {
+  user="$PINZ_USER"; file=""; pos=""
+  for a in "$@"; do
+    if [ -f "$a" ]; then file="$a"
+    elif [ -z "${a##*%*}" ]; then pos="$a"
+    else user="$a"; fi
+  done
+  test -n "$file" || { echo 'usage: mise run server:image -- <file> [user] ["x% y%"]'; exit 1; }
+  ext="${file##*.}"
+  scp "$file" "$PINZ_SERVER:/tmp/pinz-upload.$ext"
+  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image set $user /tmp/pinz-upload.$ext && rm /tmp/pinz-upload.$ext"
+  if [ -n "$pos" ]; then
+    ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $user '$pos'"
+  fi
+  echo "done — refresh https://pinz.charleslobo.com"
+}
+upload'''
 
 [tasks."server:image:position"]
-description = 'Adjust the prod picture crop: mise run server:image:position -- "50% 20%"'
+description = 'Adjust a prod picture crop: mise run server:image:position -- "50% 20%" [user]'
 run = '''
-test -n "$1" || { echo 'usage: mise run server:image:position -- "x% y%"'; exit 1; }
-ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $PINZ_USER '$1'"
-'''
+setpos() {
+  user="$PINZ_USER"; pos=""
+  for a in "$@"; do
+    if [ -z "${a##*%*}" ]; then pos="$a"; else user="$a"; fi
+  done
+  test -n "$pos" || { echo 'usage: mise run server:image:position -- "x% y%" [user]'; exit 1; }
+  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $user '$pos'"
+}
+setpos'''
 
 [tasks."server:backup"]
 description = "Snapshot the server's data/ to ../devops/backups/pinz-data.<date>.tar.gz"
@@ -74,7 +92,9 @@ ls -lh "$DEST"/pinz-data.*.tar.gz
 
 [tasks."server:admin"]
 description = "Run the admin CLI on prod: mise run server:admin -- user list"
-run = 'ssh -t "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js $*"'
+run = '''
+admin() { ssh -t "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js $*"; }
+admin'''
 
 [tasks."server:deploy"]
 description = "Deploy to prod (push, hard-reset server checkout, npm ci, restart)"
