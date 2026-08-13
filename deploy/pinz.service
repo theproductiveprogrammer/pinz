@@ -2,7 +2,7 @@
 #   sudo cp deploy/pinz.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now pinz
 # Assumes the app at /opt/pinz, data at /opt/pinz/data, a `pinz` system user, and a
-# reverse proxy (nginx/Caddy) terminating TLS in front of 127.0.0.1:3000.
+# reverse proxy (nginx/Caddy) terminating TLS in front of 127.0.0.1:7469.
 
 [Unit]
 Description=pinz bookmarking
@@ -13,7 +13,7 @@ User=pinz
 WorkingDirectory=/opt/pinz
 ExecStart=/usr/bin/node /opt/pinz/server.js
 Environment=NODE_ENV=production
-Environment=PORT=3000
+Environment=PORT=7469
 Environment=HOST=127.0.0.1
 Environment=DATA_DIR=/opt/pinz/data
 Restart=on-failure

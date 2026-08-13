@@ -5,7 +5,8 @@ import { createApp } from './src/app.js';
 import { setDataDir, loadUsers } from './src/store.js';
 import { initSecret } from './src/auth.js';
 
-const port = Number(process.env.PORT ?? 3000);
+// 7469 spells PINZ on a phone keypad — distinctive, out of the crowded 3000s.
+const port = Number(process.env.PORT ?? 7469);
 const host = process.env.HOST ?? '127.0.0.1';
 setDataDir(process.env.DATA_DIR ?? 'data');
 await initSecret();

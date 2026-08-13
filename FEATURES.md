@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-34 flows indexed.
+37 flows indexed.
 
 ## .
 
@@ -35,14 +35,17 @@ means a function missing its flow line.
   - flow: server start — server.js -> createApp() <-- HERE
 - (module) — src/app.js:35
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:41
-  - flow: add-link form -> POST /add <-- HERE -> addLink -> redirect /
-- (module) — src/app.js:54
+- (module) — src/app.js:52
+  - flow: pin dialog (new link) -> POST /add <-- HERE -> addLink -> redirect /
+- (module) — src/app.js:63
+  - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
+  - problem: fixing a link's fields and completing/restoring it are one dialog to the user.
+- (module) — src/app.js:76
   - flow: main screen <img src="/img"> -> GET /img <-- HERE
   - problem: the profile picture lives under data/, which is private.
-- (module) — src/app.js:65
+- (module) — src/app.js:87
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:74
+- (module) — src/app.js:96
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -60,41 +63,44 @@ means a function missing its flow line.
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:49
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:85
+- `homePage` — src/render.js:94
   - flow: main screen — GET / -> homePage() <-- HERE
-  - problem: the whole app is one screen: date, search, add form, and the user's links grouped under collapsible tags, with their picture alongside.
-- `loadYaml` — src/store.js:26
+  - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
+- `loadYaml` — src/store.js:29
   - flow: GET / -> requireAuth -> loadUserDoc -> loadYaml() <-- HERE
   - problem: hand-edits to the YAML files should show up on the next page load without paying a reparse on every request.
-- `loadYaml` — src/store.js:26
+- `loadYaml` — src/store.js:29
   - flow: POST /login -> findUser -> loadUsers -> loadYaml() <-- HERE
   - problem: hand-edits to the YAML files should show up on the next page load without paying a reparse on every request.
-- `loadUsers` — src/store.js:37
+- `loadUsers` — src/store.js:40
   - flow: POST /login -> handleLogin -> findUser -> loadUsers() <-- HERE
-- `findUser` — src/store.js:44
+- `findUser` — src/store.js:47
   - flow: POST /login -> handleLogin -> findUser() <-- HERE
-- `findUser` — src/store.js:44
+- `findUser` — src/store.js:47
   - flow: every authed route -> requireAuth -> findUser() <-- HERE
-- `loadUserDoc` — src/store.js:82
+- `loadUserDoc` — src/store.js:85
   - flow: GET / -> homepage handler -> loadUserDoc() <-- HERE
   - problem: the web app must never see a user without their data file — creation is the CLI's job alone.
-- `loadUserDoc` — src/store.js:82
+- `loadUserDoc` — src/store.js:85
   - flow: GET /img -> image handler -> loadUserDoc() <-- HERE
   - problem: the web app must never see a user without their data file — creation is the CLI's job alone.
-- `mutateUserDoc` — src/store.js:119
+- `mutateUserDoc` — src/store.js:122
   - flow: POST /add -> addLink -> mutateUserDoc() <-- HERE
   - problem: a web save must not clobber a file the user hand-edited into a broken state, and must not conjure files for users the CLI never created.
-- `mutateUserDoc` — src/store.js:119
+- `mutateUserDoc` — src/store.js:122
   - flow: terminal `pinz-admin user add` -> cmdUserAdd -> mutateUserDoc() <-- HERE
   - problem: a web save must not clobber a file the user hand-edited into a broken state, and must not conjure files for users the CLI never created.
-- `mutateUsers` — src/store.js:139
+- `mutateUsers` — src/store.js:143
   - flow: terminal `pinz-admin user add|passwd|rm` -> mutateUsers() <-- HERE
-- `addLink` — src/store.js:158
-  - flow: add-link form -> POST /add -> addLink() <-- HERE
-  - problem: the user adds a link once and expects it pinned exactly once.
-- `groupByTag` — src/store.js:177
+- `addLink` — src/store.js:163
+  - flow: pin dialog -> POST /add -> addLink() <-- HERE
+  - problem: the user adds a link once and expects it pinned exactly once — but re-pinning something they archived means they want it back.
+- `editLink` — src/store.js:184
+  - flow: edit dialog -> POST /edit -> editLink() <-- HERE
+  - problem: a pinned link's URL, title, or tags may need fixing, and finishing with a link should archive it, not delete it (nothing is ever lost).
+- `groupByTag` — src/store.js:205
   - flow: GET / -> homepage handler -> groupByTag() <-- HERE
-  - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order.
+  - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order, and completed links belong in the archive, not here.
 - `fetchTitle` — src/title.js:7
   - flow: add form title blank -> static/app.js fetches GET /title -> fetchTitle() <-- HERE
   - problem: pasting a URL and then typing its title by hand is friction.
@@ -104,6 +110,9 @@ means a function missing its flow line.
 - `filter` — static/app.js:39
   - flow: main screen search box — user types (or presses /) -> filter() <-- HERE
   - problem: finding one link among many without leaving the page.
+- `dialog` — static/app.js:72
+  - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
+  - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
 
 ## Self-audit
 

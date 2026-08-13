@@ -155,14 +155,17 @@ export function mutateUsers(mutate) {
   });
 }
 
-// The problem is the user adds a link once and expects it pinned exactly once.
-// The way we solve this is checking for the URL inside the write lock and skipping
-// the append when it's already there, reporting back which case happened.
-// flow: add-link form -> POST /add -> addLink() <-- HERE
+// The problem is the user adds a link once and expects it pinned exactly once —
+// but re-pinning something they archived means they want it back. The way we solve
+// this is checking for the URL inside the write lock: an active twin skips the
+// append, an archived twin is restored instead.
+// flow: pin dialog -> POST /add -> addLink() <-- HERE
 export function addLink(username, { link, title, tags }) {
-  let duplicate = false;
+  let result = 'ok';
   return mutateUserDoc(username, doc => {
-    if (doc.links.some(l => l.link === link)) { duplicate = true; return false; }
+    const twin = doc.links.find(l => l.link === link);
+    if (twin && !twin.done) { result = 'duplicate'; return false; }
+    if (twin) { result = 'restored'; delete twin.done; return doc; }
     doc.links.push({
       link,
       title: title || '',
@@ -170,17 +173,38 @@ export function addLink(username, { link, title, tags }) {
       added: new Date().toISOString(),
     });
     return doc;
-  }).then(() => ({ duplicate }));
+  }).then(() => result);
+}
+
+// The problem is a pinned link's URL, title, or tags may need fixing, and finishing
+// with a link should archive it, not delete it (nothing is ever lost). The way we
+// solve this is finding the entry by its current URL inside the write lock, applying
+// the new fields, and setting/clearing a `done` timestamp for complete/restore.
+// flow: edit dialog -> POST /edit -> editLink() <-- HERE
+export function editLink(username, orig, { link, title, tags, done }) {
+  let result = 'ok';
+  return mutateUserDoc(username, doc => {
+    const entry = doc.links.find(l => l.link === orig);
+    if (!entry) { result = 'missing'; return false; }
+    if (link !== orig && doc.links.some(l => l.link === link)) { result = 'duplicate'; return false; }
+    entry.link = link;
+    entry.title = title;
+    entry.tags = [...new Set(tags.map(normalizeTag).filter(Boolean))];
+    if (done === true && !entry.done) entry.done = new Date().toISOString();
+    if (done === false) delete entry.done;
+    return doc;
+  }).then(() => result);
 }
 
 // The problem is the page shows links grouped by tag in the user's preferred order,
-// not in YAML storage order. The way we solve this is bucketing links per tag, then
-// ordering groups by tag_order position first, alphabetically after, untagged last
-// unless tag_order places it explicitly. Links keep file (append) order.
+// not in YAML storage order, and completed links belong in the archive, not here.
+// The way we solve this is bucketing the not-done links per tag, then ordering groups
+// by tag_order position first, alphabetically after, untagged last unless tag_order
+// places it explicitly. Links keep file (append) order.
 // flow: GET / -> homepage handler -> groupByTag() <-- HERE
 export function groupByTag(doc) {
   const groups = new Map();
-  for (const l of doc.links) {
+  for (const l of doc.links.filter(l => !l.done)) {
     for (const t of (l.tags.length ? l.tags : ['untagged'])) {
       if (!groups.has(t)) groups.set(t, []);
       groups.get(t).push(l);

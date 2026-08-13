@@ -62,12 +62,23 @@ button.quiet:hover { color: var(--accent); }
 
 .controls { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
 #search { width: 100%; }
-details.add summary { color: var(--muted); cursor: pointer; width: fit-content; list-style: none; }
-details.add summary::-webkit-details-marker { display: none; }
-details.add form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-details.add input[name="link"] { flex: 2 1 16rem; }
-details.add input[name="title"] { flex: 2 1 12rem; }
-details.add input[name="tags"] { flex: 1 1 10rem; }
+#pin-new { width: fit-content; }
+
+/* pin/edit dialog */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 1.25rem;
+  width: min(28rem, 92vw);
+}
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+#pin-form { display: flex; flex-direction: column; gap: 0.6rem; }
+#pin-form h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+#pin-form .actions { display: flex; gap: 0.75rem; justify-content: flex-end; align-items: center; margin-top: 0.4rem; }
+#pin-done:hover { color: var(--accent); }
+#pin-restore:hover { color: var(--accent); }
 
 .notice { color: var(--accent); margin: 0; }
 .error { color: var(--error); }
@@ -93,7 +104,16 @@ details.tag > summary::before { content: "> "; color: var(--muted); }
 details.tag[open] > summary::before { content: "v "; }
 details.tag .count { color: var(--muted); font-size: 0.85em; }
 details.tag ul { margin: 0.25rem 0 0.5rem; padding-left: 1.5rem; list-style: none; }
-details.tag li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.tag li { display: flex; align-items: baseline; gap: 0.5rem; }
+details.tag li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li .edit { opacity: 0.25; padding: 0 0.25rem; }
+li:hover .edit, li .edit:focus-visible { opacity: 1; }
+
+/* the archive: completed links, kept forever, out of the way */
+details.archive { margin-top: 1.5rem; }
+details.archive > summary { color: var(--muted); }
+li.done a { color: var(--muted); text-decoration: line-through; }
+li.done a:hover { text-decoration: line-through underline; }
 
 .login { max-width: 20rem; margin: 15vh auto 0; display: flex; flex-direction: column; gap: 0.75rem; }
 .login h1 { margin: 0; font-size: 1.5rem; }

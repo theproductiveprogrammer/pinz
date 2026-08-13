@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { requireAuth, handleLogin, handleLogout } from './auth.js';
-import { loadUserDoc, addLink, groupByTag, getDataDir, normalizeTag, NoUserFileError } from './store.js';
+import { loadUserDoc, addLink, editLink, groupByTag, getDataDir, normalizeTag, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 
@@ -35,17 +35,39 @@ export function createApp() {
   // flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
   app.get('/', wrap(requireAuth), wrap(async (req, res) => {
     const doc = await loadUserDoc(req.user);
-    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), duplicate: 'dup' in req.query }));
+    const notice = ['dup', 'restored', 'missing'].find(n => n in req.query) ?? '';
+    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), notice }));
   }));
 
-  // flow: add-link form -> POST /add <-- HERE -> addLink -> redirect /
+  // Shared by /add and /edit: the validated fields of the pin dialog.
+  function pinFields(body) {
+    const url = parseHttpUrl(body?.link);
+    return url && {
+      link: url.href,
+      title: String(body?.title ?? '').trim(),
+      tags: String(body?.tags ?? '').split(',').map(normalizeTag).filter(Boolean),
+    };
+  }
+
+  // flow: pin dialog (new link) -> POST /add <-- HERE -> addLink -> redirect /
   app.post('/add', wrap(requireAuth), wrap(async (req, res) => {
-    const url = parseHttpUrl(req.body?.link);
-    if (!url) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
-    const title = String(req.body?.title ?? '').trim();
-    const tags = String(req.body?.tags ?? '').split(',').map(normalizeTag).filter(Boolean);
-    const { duplicate } = await addLink(req.user, { link: url.href, title, tags });
-    res.redirect(303, duplicate ? '/?dup=1' : '/');
+    const fields = pinFields(req.body);
+    if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
+    const result = await addLink(req.user, fields);
+    res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'restored'}=1`);
+  }));
+
+  // The problem is fixing a link's fields and completing/restoring it are one dialog
+  // to the user. The way we solve this is one endpoint keyed by the link's original
+  // URL, where the pressed button (action) decides what happens to the done flag.
+  // flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
+  app.post('/edit', wrap(requireAuth), wrap(async (req, res) => {
+    const fields = pinFields(req.body);
+    if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
+    const action = String(req.body?.action ?? 'save');
+    const done = action === 'done' ? true : action === 'restore' ? false : undefined;
+    const result = await editLink(req.user, String(req.body?.orig ?? ''), { ...fields, done });
+    res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'missing'}=1`);
   }));
 
   // The problem is the profile picture lives under data/, which is private. The way we

@@ -55,10 +55,10 @@ Command line interface fine to change password of users, add/position image
 ```sh
 npm install
 node bin/pinz-admin.js user add <name>   # accounts are ONLY created here
-npm start                                # http://127.0.0.1:3000
+npm start                                # http://127.0.0.1:7469
 ```
 
-Env vars: `PORT` (3000), `HOST` (127.0.0.1), `DATA_DIR` (./data), `NODE_ENV=production` adds the `Secure` cookie flag.
+Env vars: `PORT` (7469, "PINZ" on a phone keypad), `HOST` (127.0.0.1), `DATA_DIR` (./data), `NODE_ENV=production` adds the `Secure` cookie flag.
 
 ### Admin CLI
 
@@ -82,12 +82,12 @@ All commands accept `--data <dir>`. Passwords are prompted (hidden), or piped: `
 
 ### Deploy (droplet)
 
-`deploy/pinz.service` is a hardened systemd unit expecting the app at `/opt/pinz` under a `pinz` user, bound to `127.0.0.1:3000`. Put your reverse proxy in front:
+`deploy/pinz.service` is a hardened systemd unit expecting the app at `/opt/pinz` under a `pinz` user, bound to `127.0.0.1:7469`. Put your reverse proxy in front:
 
 ```
 # nginx                                  # Caddy
 location / {                             pinz.example.com {
-  proxy_pass http://127.0.0.1:3000;        reverse_proxy 127.0.0.1:3000
+  proxy_pass http://127.0.0.1:7469;        reverse_proxy 127.0.0.1:7469
 }                                        }
 ```
 

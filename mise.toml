@@ -4,7 +4,8 @@ node = "lts"
 [env]
 # Dev defaults; the droplet overrides these in a gitignored mise.local.toml
 # (mise merges it over this file) or via the systemd unit's Environment= lines.
-PORT = "3000"
+# 7469 spells PINZ on a phone keypad
+PORT = "7469"
 HOST = "127.0.0.1"
 DATA_DIR = "{{config_root}}/data"
 
@@ -13,7 +14,7 @@ description = "Install dependencies"
 run = "npm install"
 
 [tasks.start]
-description = "Run the server (http://localhost:3000)"
+description = "Run the server (http://localhost:7469)"
 run = "node server.js"
 
 [tasks.stop]

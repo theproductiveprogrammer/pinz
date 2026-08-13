@@ -64,6 +64,45 @@
     });
   }
 
+  // The problem is one dialog serves three jobs: pin a new link, edit an existing
+  // one, and complete/restore it. The way we solve this is prefilling the form from
+  // the clicked item's data attributes and switching the form's target and buttons
+  // to match the mode.
+  // flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
+  const dialog = document.getElementById('pin-dialog');
+  const form = document.getElementById('pin-form');
+  if (dialog && form) {
+    const heading = document.getElementById('pin-heading');
+    const submit = document.getElementById('pin-submit');
+    const doneBtn = document.getElementById('pin-done');
+    const restoreBtn = document.getElementById('pin-restore');
+
+    const openDialog = li => {
+      form.reset();
+      const editing = !!li;
+      form.action = editing ? '/edit' : '/add';
+      form.elements.orig.value = editing ? li.dataset.link : '';
+      form.elements.link.value = editing ? li.dataset.link : '';
+      form.elements.title.value = editing ? li.dataset.title : '';
+      form.elements.tags.value = editing ? li.dataset.tags : '';
+      heading.textContent = editing ? 'edit link' : 'pin a link';
+      submit.textContent = editing ? 'save' : 'pin';
+      doneBtn.hidden = !editing || li.dataset.done === '1';
+      restoreBtn.hidden = !editing || li.dataset.done !== '1';
+      dialog.showModal();
+      form.elements.link.focus();
+    };
+
+    document.getElementById('pin-new').addEventListener('click', () => openDialog(null));
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('li .edit');
+      if (btn) openDialog(btn.closest('li'));
+    });
+    document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
+    // click on the backdrop (the dialog element itself, not its children) closes
+    dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
+  }
+
   // Fill the title field from the server's /title lookup when the user leaves it blank.
   const linkInput = document.getElementById('add-link');
   const titleInput = document.getElementById('add-title');
