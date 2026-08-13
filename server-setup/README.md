@@ -126,7 +126,7 @@ Convention: bare mise tasks act locally, `server:*` tasks touch production.
 ```bash
 mise run server:admin -- user list
 mise run server:admin -- user passwd charles.lobo
-mise run server:image -- photo.jpg "50% 20%"
+mise run server:image -- charles.lobo photo.jpg "50% 20%"
 mise run server:deploy
 ```
 

@@ -6,9 +6,8 @@ node = "lts"
 # (mise merges it over this file) or via the systemd unit's Environment= lines.
 # 7469 spells PINZ on a phone keypad
 PORT = "7469"
-# Production server + account, used by the image/backup tasks
+# Production server, used by the server:* tasks
 PINZ_SERVER = "noah@the-ark"
-PINZ_USER = "charles.lobo"
 HOST = "127.0.0.1"
 DATA_DIR = "{{config_root}}/data"
 
@@ -41,23 +40,26 @@ run = "node bin/pinz-admin.js"
 # Convention: bare task names act locally; server:* tasks touch production.
 
 [tasks."server:image"]
-description = 'Upload a pinz picture to prod: mise run server:image -- <file> [user] ["50% 20%"] (any order; user defaults to you)'
+description = 'Upload a pinz picture to prod: mise run server:image -- <user> <file> ["50% 20%"] (any order)'
 # Args are told apart by shape: an existing path is the file, something with a
-# "%" is the crop position, anything else is the username.
+# "%" is the crop position, anything else is the username. User and file are
+# both mandatory.
 # mise appends task args to the LAST line of the script, so the body lives in
 # a function and the final line receives them as real "$@".
 run = '''
 upload() {
-  user="$PINZ_USER"; file=""; pos=""
+  user=""; file=""; pos=""
   for a in "$@"; do
     if [ -f "$a" ]; then file="$a"
     elif [ -z "${a##*%*}" ]; then pos="$a"
     else user="$a"; fi
   done
-  test -n "$file" || { echo 'usage: mise run server:image -- <file> [user] ["x% y%"]'; exit 1; }
+  if [ -z "$file" ] || [ -z "$user" ]; then
+    echo 'usage: mise run server:image -- <user> <file> ["x% y%"]'; exit 1
+  fi
   ext="${file##*.}"
   scp "$file" "$PINZ_SERVER:/tmp/pinz-upload.$ext"
-  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image set $user /tmp/pinz-upload.$ext && rm /tmp/pinz-upload.$ext"
+  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image set $user /tmp/pinz-upload.$ext; rc=\$?; rm -f /tmp/pinz-upload.$ext; exit \$rc"
   if [ -n "$pos" ]; then
     ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $user '$pos'"
   fi
@@ -66,14 +68,16 @@ upload() {
 upload'''
 
 [tasks."server:image:position"]
-description = 'Adjust a prod picture crop: mise run server:image:position -- "50% 20%" [user]'
+description = 'Adjust a prod picture crop: mise run server:image:position -- <user> "50% 20%"'
 run = '''
 setpos() {
-  user="$PINZ_USER"; pos=""
+  user=""; pos=""
   for a in "$@"; do
     if [ -z "${a##*%*}" ]; then pos="$a"; else user="$a"; fi
   done
-  test -n "$pos" || { echo 'usage: mise run server:image:position -- "x% y%" [user]'; exit 1; }
+  if [ -z "$pos" ] || [ -z "$user" ]; then
+    echo 'usage: mise run server:image:position -- <user> "x% y%"'; exit 1
+  fi
   ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $user '$pos'"
 }
 setpos'''
