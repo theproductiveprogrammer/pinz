@@ -152,9 +152,8 @@
       if (!resizing) photo.classList.add('dragging');
       const onMove = ev => {
         if (resizing) {
-          const w = Math.max(32, Math.round((ev.pageX - cx0) * 2));
-          photo.style.width = `${w}px`;
-          photo.style.height = `${Math.max(32, Math.round(w * r0.height / r0.width))}px`;
+          // width only — height follows the image's natural aspect ratio
+          photo.style.width = `${Math.max(32, Math.round((ev.pageX - cx0) * 2))}px`;
         } else {
           photo.style.left = `${Math.round(ev.pageX + dx)}px`;
           photo.style.top = `${Math.round(ev.pageY + dy)}px`;
@@ -166,7 +165,7 @@
         const r = photo.getBoundingClientRect();
         const cx = r.left + r.width / 2 + scrollX;
         const cy = r.top + r.height / 2 + scrollY;
-        const pos = `${(cx / innerWidth * 100).toFixed(1)}% ${Math.round(cy)}px ${Math.round(r.width)}px ${Math.round(r.height)}px`;
+        const pos = `${(cx / innerWidth * 100).toFixed(1)}% ${Math.round(cy)}px ${Math.round(r.width)}px`;
         fetch('/image-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
