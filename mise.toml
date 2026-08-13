@@ -6,6 +6,9 @@ node = "lts"
 # (mise merges it over this file) or via the systemd unit's Environment= lines.
 # 7469 spells PINZ on a phone keypad
 PORT = "7469"
+# Production server + account, used by the image/backup tasks
+PINZ_SERVER = "noah@134.122.127.41"
+PINZ_USER = "charles.lobo"
 HOST = "127.0.0.1"
 DATA_DIR = "{{config_root}}/data"
 
@@ -34,6 +37,48 @@ fi
 [tasks.admin]
 description = 'Run the admin CLI: mise run admin -- user add <name>'
 run = "node bin/pinz-admin.js"
+
+# Convention: bare task names act locally; server:* tasks touch production.
+
+[tasks."server:image"]
+description = 'Upload your pinz picture to prod: mise run server:image -- <file> ["50% 20%"]'
+run = '''
+test -f "$1" || { echo 'usage: mise run server:image -- <file> ["x% y%"]'; exit 1; }
+ext="${1##*.}"
+scp "$1" "$PINZ_SERVER:/tmp/pinz-upload.$ext"
+ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image set $PINZ_USER /tmp/pinz-upload.$ext && rm /tmp/pinz-upload.$ext"
+if [ -n "$2" ]; then
+  ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $PINZ_USER '$2'"
+fi
+echo "done — refresh https://pinz.charleslobo.com"
+'''
+
+[tasks."server:image:position"]
+description = 'Adjust the prod picture crop: mise run server:image:position -- "50% 20%"'
+run = '''
+test -n "$1" || { echo 'usage: mise run server:image:position -- "x% y%"'; exit 1; }
+ssh "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js image position $PINZ_USER '$1'"
+'''
+
+[tasks."server:backup"]
+description = "Snapshot the server's data/ to ../devops/backups/pinz-data.<date>.tar.gz"
+# tar is streamed over ssh — nothing is written on the server.
+run = '''
+DEST="{{config_root}}/../devops/backups"
+test -d "$DEST" || { echo "missing $DEST"; exit 1; }
+STAMP=$(date +%Y-%m-%d)
+ssh "$PINZ_SERVER" "cd pinz && tar czf - data" > "$DEST/pinz-data.$STAMP.tar.gz"
+echo "saved:"
+ls -lh "$DEST"/pinz-data.*.tar.gz
+'''
+
+[tasks."server:admin"]
+description = "Run the admin CLI on prod: mise run server:admin -- user list"
+run = 'ssh -t "$PINZ_SERVER" "cd pinz && /usr/bin/mise exec -- node bin/pinz-admin.js $*"'
+
+[tasks."server:deploy"]
+description = "Deploy to prod (push, hard-reset server checkout, npm ci, restart)"
+run = "./server-setup/deploy.sh"
 
 [tasks.features]
 description = "Regenerate FEATURES.md from flow: comments (gen-features skill)"

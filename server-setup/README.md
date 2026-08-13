@@ -111,19 +111,24 @@ All state is one small directory of text + images. Nightly cron on the server
 50 3 * * * cd /home/noah/pinz && mkdir -p backups && tar czf backups/data-$(date +\%Y\%m\%d).tgz data && ls -t backups/data-*.tgz | tail -n +31 | xargs rm -f
 ```
 
-Pull copies to your machine whenever:
+Pull a snapshot to your machine whenever (lands in ../devops/backups/):
 
 ```bash
-rsync -az noah@134.122.127.41:pinz/backups/ backups/server/
+mise run server:backup
 ```
 
-(`backups/` is gitignored, like `data/`.)
+(`backups/` on the server is gitignored, like `data/`.)
 
 ## Admin from your machine
 
-The CLI runs on the server (it edits the server's data/):
+Convention: bare mise tasks act locally, `server:*` tasks touch production.
 
 ```bash
-ssh noah@134.122.127.41 "cd pinz && node bin/pinz-admin.js user list"
-ssh -t noah@134.122.127.41 "cd pinz && node bin/pinz-admin.js user passwd charles.lobo"
+mise run server:admin -- user list
+mise run server:admin -- user passwd charles.lobo
+mise run server:image -- photo.jpg "50% 20%"
+mise run server:deploy
 ```
+
+(Raw ssh needs `/usr/bin/mise exec -- node ...` — mise isn't on PATH in
+non-interactive shells.)
