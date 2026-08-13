@@ -1,0 +1,43 @@
+[tools]
+node = "lts"
+
+[env]
+# Dev defaults; the droplet overrides these in a gitignored mise.local.toml
+# (mise merges it over this file) or via the systemd unit's Environment= lines.
+PORT = "3000"
+HOST = "127.0.0.1"
+DATA_DIR = "{{config_root}}/data"
+
+[tasks.setup]
+description = "Install dependencies"
+run = "npm install"
+
+[tasks.start]
+description = "Run the server (http://localhost:3000)"
+run = "node server.js"
+
+[tasks.stop]
+description = "Kill whatever holds the dev port (strays from earlier runs)"
+# Killing by PORT OWNER, never by name — same rationale as throughglass:
+# it catches orphaned shells and can't reach anything that isn't in the way.
+run = '''
+if pids=$(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null) && [ -n "$pids" ]; then
+  ps -o pid=,etime=,command= -p $pids 2>/dev/null | cut -c1-140 || true
+  kill $pids 2>/dev/null || true
+  echo "port $PORT cleared"
+else
+  echo "nothing on $PORT — already clear"
+fi
+'''
+
+[tasks.admin]
+description = 'Run the admin CLI: mise run admin -- user add <name>'
+run = "node bin/pinz-admin.js"
+
+[tasks.features]
+description = "Regenerate FEATURES.md from flow: comments (gen-features skill)"
+run = "python3 ~/.claude/skills/gen-features/gen_features.py"
+
+[tasks."ui:app"]
+description = "Open the app"
+run = "open http://localhost:$PORT"
