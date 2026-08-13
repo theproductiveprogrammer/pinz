@@ -71,7 +71,9 @@ export function errorPage(message, status = 500) {
 function linkItem(l) {
   const text = (l.title ?? '').trim() || l.link;
   const search = [l.title ?? '', l.link, ...l.tags].join(' ').toLowerCase();
-  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link)}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}"><a href="${escapeHtml(l.link)}" target="_blank" rel="noopener">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
+  // Same-tab on purpose: pinz is a start page, so a click hands the tab over
+  // to the link (cmd/ctrl-click still opens a new one).
+  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link)}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}"><a href="${escapeHtml(l.link)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
