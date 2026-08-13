@@ -70,7 +70,9 @@ export function errorPage(message, status = 500) {
 // without another server round-trip.
 function linkItem(l) {
   const text = (l.title ?? '').trim() || l.link;
-  const search = [l.title ?? '', l.link, ...l.tags].join(' ').toLowerCase();
+  // Search matches what the eye sees: the displayed text plus tags — not the
+  // URL, which matched all sorts of things the user never typed.
+  const search = [text, ...l.tags].join(' ').toLowerCase();
   // Same-tab on purpose: pinz is a start page, so a click hands the tab over
   // to the link (cmd/ctrl-click still opens a new one).
   return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link)}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}"><a href="${escapeHtml(l.link)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
