@@ -90,15 +90,15 @@ ${links.map(linkItem).join('\n')}
 </details>`;
 }
 
-// The problem is picture_position places and sizes the image anywhere on the page
-// ("X% Y% [W [H]]"), but it comes from a hand-editable YAML file and lands in a style
-// attribute. The way we solve this is accepting only bare CSS lengths, falling back
-// to a top-right thumbnail when absent or invalid. Height defaults to width (square).
+// The problem is picture_position pins the image anywhere on the page ("X Y [W [H]]",
+// typically "50% 320px"), but it comes from a hand-editable YAML file and lands in a
+// style attribute. The way we solve this is accepting only bare CSS lengths, falling
+// back to a top-right thumbnail when absent or invalid. Height defaults to width.
 function photoStyle(pos) {
   const LEN = /^\d+(?:\.\d+)?(?:%|px|rem|em|vw|vh)$/;
   const t = String(pos ?? '').trim().split(/\s+/).filter(Boolean);
   const ok = t.length >= 2 && t.length <= 4 && t.every(v => LEN.test(v));
-  const [x = '85%', y = '22%', w = '12rem', h] = ok ? t : [];
+  const [x = '85%', y = '10rem', w = '12rem', h] = ok ? t : [];
   return `left:${x};top:${y};width:${w};height:${h ?? w}`;
 }
 

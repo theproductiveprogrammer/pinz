@@ -131,9 +131,11 @@
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
   }
 
-  // The problem is placing the photo by editing "X% Y%" numbers is guesswork.
+  // The problem is placing the photo by editing position numbers is guesswork.
   // The way we solve this is making the photo draggable: drop it where it should
-  // live and the position (plus current size) is saved back to the YAML.
+  // live and the position (plus current size) is saved back to the YAML — in PAGE
+  // coordinates (X as % of page width, Y as px from the top of the document), so
+  // the photo scrolls with the content it's pinned beside.
   // flow: main screen — user drags the photo -> POST /image-position
   const photo = document.querySelector('.photo');
   if (photo) {
@@ -143,17 +145,19 @@
       photo.classList.add('dragging');
       // keep the grab point — don't jump the image's center under the cursor
       const r0 = photo.getBoundingClientRect();
-      const dx = r0.left + r0.width / 2 - e.clientX;
-      const dy = r0.top + r0.height / 2 - e.clientY;
+      const dx = r0.left + r0.width / 2 + scrollX - e.pageX;
+      const dy = r0.top + r0.height / 2 + scrollY - e.pageY;
       const place = ev => {
-        photo.style.left = `${((ev.clientX + dx) / innerWidth * 100).toFixed(1)}%`;
-        photo.style.top = `${((ev.clientY + dy) / innerHeight * 100).toFixed(1)}%`;
+        photo.style.left = `${Math.round(ev.pageX + dx)}px`;
+        photo.style.top = `${Math.round(ev.pageY + dy)}px`;
       };
       const up = () => {
         photo.removeEventListener('pointermove', place);
         photo.classList.remove('dragging');
         const r = photo.getBoundingClientRect();
-        const pos = `${photo.style.left} ${photo.style.top} ${Math.round(r.width)}px ${Math.round(r.height)}px`;
+        const cx = r.left + r.width / 2 + scrollX;
+        const cy = r.top + r.height / 2 + scrollY;
+        const pos = `${(cx / innerWidth * 100).toFixed(1)}% ${Math.round(cy)}px ${Math.round(r.width)}px ${Math.round(r.height)}px`;
         fetch('/image-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

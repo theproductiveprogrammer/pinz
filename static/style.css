@@ -143,12 +143,13 @@ details.archive { margin-top: 2.25rem; }
 details.archive > summary { color: var(--muted); font-weight: 400; }
 li.done a { color: var(--muted); text-decoration: line-through; }
 
-/* ---------- photo: floats wherever picture_position puts it ----------
-   Inline style from the YAML supplies left/top/width/height ("X% Y% [W [H]]");
-   the image is centered on that point and stays put while scrolling. */
+/* ---------- photo: pinned to the page wherever picture_position puts it ----
+   Inline style from the YAML supplies left/top/width/height ("X Y [W [H]]");
+   the image is centered on that point in PAGE coordinates, so it scrolls with
+   the content — a photo pinned to the board, not a viewport overlay. */
 
 .photo {
-  position: fixed;
+  position: absolute;
   transform: translate(-50%, -50%);
   margin: 0;
   padding: 0;
