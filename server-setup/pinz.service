@@ -1,0 +1,25 @@
+# systemd unit for pinz — see server-setup/README.md for the runbook.
+# Same shape as throughglass-backend.service: runs as noah from the repo
+# checkout via mise, journal logging, always restart.
+
+[Unit]
+Description=pinz bookmarking (port 7469)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noah
+WorkingDirectory=/home/noah/pinz
+# PORT/HOST/DATA_DIR come from mise.toml [env] (loaded by `mise run` from
+# WorkingDirectory; the checkout must be `mise trust`ed once). NODE_ENV turns
+# on the Secure cookie flag — TLS terminates at nginx.
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/mise run start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

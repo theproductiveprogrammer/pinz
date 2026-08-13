@@ -82,13 +82,4 @@ All commands accept `--data <dir>`. Passwords are prompted (hidden), or piped: `
 
 ### Deploy (droplet)
 
-`deploy/pinz.service` is a hardened systemd unit expecting the app at `/opt/pinz` under a `pinz` user, bound to `127.0.0.1:7469`. Put your reverse proxy in front:
-
-```
-# nginx                                  # Caddy
-location / {                             pinz.example.com {
-  proxy_pass http://127.0.0.1:7469;        reverse_proxy 127.0.0.1:7469
-}                                        }
-```
-
-Back up `data/` — it's just text + images.
+See `server-setup/README.md` — the full runbook for https://pinz.charleslobo.com (systemd unit, nginx vhost + certbot, `./server-setup/deploy.sh` for releases, backups). Back up `data/` — it's just text + images.
