@@ -21,26 +21,24 @@
   }
 
   const groups = [...document.querySelectorAll('details.tag')];
-  let searching = false;
 
-  // Reopen the tag groups the user had open last visit; remember future toggles.
-  for (const d of groups) {
-    const key = `pinz.open.${d.dataset.tag}`;
-    if (localStorage.getItem(key) === '1') d.open = true;
-    d.addEventListener('toggle', () => {
-      if (!searching) localStorage.setItem(key, d.open ? '1' : '0');
-    });
+  // Every load starts clean: nothing remembers which groups were open (and old
+  // remembered state from earlier versions is wiped).
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith('pinz.open.')) localStorage.removeItem(k);
   }
 
   // The problem is finding one link among many without leaving the page. The way we
   // solve this is filtering the server-rendered list in place: hide non-matching
-  // links, force-open groups with hits, hide groups without any.
+  // links, force-open groups with hits, hide groups without any. Open state from
+  // before the search is snapshotted and put back when the search clears.
   const box = document.getElementById('search');
   if (box) {
+    let preSearch = null;
     // flow: main screen search box — user types (or presses /) -> filter() <-- HERE
     const filter = () => {
       const q = box.value.trim().toLowerCase();
-      searching = q.length > 0;
+      if (q && !preSearch) preSearch = new Map(groups.map(d => [d.dataset.tag, d.open]));
       for (const d of groups) {
         let hits = 0;
         for (const li of d.querySelectorAll('li')) {
@@ -48,13 +46,16 @@
           li.hidden = !hit;
           if (hit) hits++;
         }
-        if (searching) {
+        if (q) {
           d.hidden = hits === 0;
           d.open = hits > 0;
         } else {
           d.hidden = false;
-          d.open = localStorage.getItem(`pinz.open.${d.dataset.tag}`) === '1';
         }
+      }
+      if (!q && preSearch) {
+        for (const d of groups) d.open = preSearch.get(d.dataset.tag) ?? false;
+        preSearch = null;
       }
     };
     box.addEventListener('input', filter);
