@@ -153,8 +153,6 @@ li.done a { color: var(--muted); text-decoration: line-through; }
   transform: translate(-50%, -50%);
   margin: 0;
   padding: 0;
-  border: 2px solid var(--rule);
-  border-radius: 0;
   background: var(--bg);
   cursor: grab;
   touch-action: none;
@@ -162,6 +160,20 @@ li.done a { color: var(--muted); text-decoration: line-through; }
 }
 .photo.dragging { cursor: grabbing; }
 .photo img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+/* corner resize handle, revealed on hover */
+.photo::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  opacity: 0;
+  cursor: nwse-resize;
+  transition: opacity 120ms;
+}
+.photo:hover::after { opacity: 1; }
 
 /* ---------- dialog ---------- */
 

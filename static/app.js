@@ -131,28 +131,37 @@
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
   }
 
-  // The problem is placing the photo by editing position numbers is guesswork.
-  // The way we solve this is making the photo draggable: drop it where it should
-  // live and the position (plus current size) is saved back to the YAML — in PAGE
-  // coordinates (X as % of page width, Y as px from the top of the document), so
-  // the photo scrolls with the content it's pinned beside.
-  // flow: main screen — user drags the photo -> POST /image-position
+  // The problem is placing and sizing the photo by editing numbers is guesswork.
+  // The way we solve this is direct manipulation: drag the photo to move it, drag
+  // its corner handle to resize it (center stays put), and the result is saved
+  // back to the YAML in PAGE coordinates (X as % of page width, Y as px from the
+  // top of the document) so the photo scrolls with the content it's pinned beside.
+  // flow: main screen — user drags the photo or its corner -> POST /image-position
   const photo = document.querySelector('.photo');
   if (photo) {
     photo.addEventListener('pointerdown', e => {
       e.preventDefault();
       photo.setPointerCapture(e.pointerId);
-      photo.classList.add('dragging');
-      // keep the grab point — don't jump the image's center under the cursor
       const r0 = photo.getBoundingClientRect();
-      const dx = r0.left + r0.width / 2 + scrollX - e.pageX;
-      const dy = r0.top + r0.height / 2 + scrollY - e.pageY;
-      const place = ev => {
-        photo.style.left = `${Math.round(ev.pageX + dx)}px`;
-        photo.style.top = `${Math.round(ev.pageY + dy)}px`;
+      // page-coordinate center — fixed during resize, follows the cursor on move
+      const cx0 = r0.left + r0.width / 2 + scrollX;
+      const cy0 = r0.top + r0.height / 2 + scrollY;
+      const resizing = e.clientX > r0.right - 18 && e.clientY > r0.bottom - 18;
+      const dx = cx0 - e.pageX;
+      const dy = cy0 - e.pageY;
+      if (!resizing) photo.classList.add('dragging');
+      const onMove = ev => {
+        if (resizing) {
+          const w = Math.max(32, Math.round((ev.pageX - cx0) * 2));
+          photo.style.width = `${w}px`;
+          photo.style.height = `${Math.max(32, Math.round(w * r0.height / r0.width))}px`;
+        } else {
+          photo.style.left = `${Math.round(ev.pageX + dx)}px`;
+          photo.style.top = `${Math.round(ev.pageY + dy)}px`;
+        }
       };
       const up = () => {
-        photo.removeEventListener('pointermove', place);
+        photo.removeEventListener('pointermove', onMove);
         photo.classList.remove('dragging');
         const r = photo.getBoundingClientRect();
         const cx = r.left + r.width / 2 + scrollX;
@@ -164,7 +173,7 @@
           body: `pos=${encodeURIComponent(pos)}`,
         }).catch(() => { /* position still applies until reload */ });
       };
-      photo.addEventListener('pointermove', place);
+      photo.addEventListener('pointermove', onMove);
       photo.addEventListener('pointerup', up, { once: true });
     });
   }
