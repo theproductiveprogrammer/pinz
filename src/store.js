@@ -198,9 +198,10 @@ export function editLink(username, orig, { link, title, tags, done }) {
 
 // The problem is the page shows links grouped by tag in the user's preferred order,
 // not in YAML storage order, and completed links belong in the archive, not here.
-// The way we solve this is bucketing the not-done links per tag, then ordering groups
-// by tag_order position first, alphabetically after, untagged last unless tag_order
-// places it explicitly. Links keep file (append) order.
+// The way we solve this is bucketing the not-done links per tag, then ordering groups:
+// untagged first (it's the inbox — links waiting to be filed), then tag_order
+// position, then alphabetical. tag_order can still place untagged explicitly.
+// Links keep file (append) order.
 // flow: GET / -> homepage handler -> groupByTag() <-- HERE
 export function groupByTag(doc) {
   const groups = new Map();
@@ -210,11 +211,14 @@ export function groupByTag(doc) {
       groups.get(t).push(l);
     }
   }
-  const pos = t => { const i = doc.tag_order.indexOf(t); return i === -1 ? Infinity : i; };
+  const pos = t => {
+    const i = doc.tag_order.indexOf(t);
+    if (i !== -1) return i;
+    return t === 'untagged' ? -1 : Infinity;
+  };
   return [...groups.entries()].sort(([a], [b]) => {
     const ia = pos(a), ib = pos(b);
     if (ia !== ib) return ia - ib;
-    if ((a === 'untagged') !== (b === 'untagged')) return a === 'untagged' ? 1 : -1;
     return a.localeCompare(b);
   });
 }

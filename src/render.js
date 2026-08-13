@@ -77,9 +77,11 @@ function linkItem(l) {
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
+// The untagged group is the inbox, not a real tag — no "#", styled apart.
 function tagGroup([tag, links]) {
-  return `<details class="tag" data-tag="${escapeHtml(tag)}">
-<summary>#${escapeHtml(tag)} <span class="count">${links.length}</span></summary>
+  const untagged = tag === 'untagged';
+  return `<details class="tag${untagged ? ' untagged' : ''}" data-tag="${escapeHtml(tag)}">
+<summary>${untagged ? 'untagged' : `#${escapeHtml(tag)}`} <span class="count">${links.length}</span></summary>
 <ul>
 ${links.map(linkItem).join('\n')}
 </ul>
