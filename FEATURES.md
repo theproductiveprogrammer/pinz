@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-37 flows indexed.
+40 flows indexed.
 
 ## .
 
@@ -16,18 +16,23 @@ means a function missing its flow line.
 
 ## bin
 
-- `cmdUserAdd` — bin/pinz-admin.js:57
+- `cmdUserAdd` — bin/pinz-admin.js:59
   - flow: terminal — admin runs `pinz-admin user add <name>` to create an account <-- HERE
-- `cmdUserPasswd` — bin/pinz-admin.js:70
+- `cmdUserPasswd` — bin/pinz-admin.js:72
   - flow: terminal — `pinz-admin user passwd <name>` <-- HERE
-- `cmdUserList` — bin/pinz-admin.js:80
+- `cmdUserList` — bin/pinz-admin.js:82
   - flow: terminal — `pinz-admin user list` <-- HERE
-- `cmdUserRm` — bin/pinz-admin.js:87
+- `cmdUserRm` — bin/pinz-admin.js:89
   - flow: terminal — `pinz-admin user rm <name>` <-- HERE
-- `cmdImageSet` — bin/pinz-admin.js:96
+- `cmdImageSet` — bin/pinz-admin.js:98
   - flow: terminal — `pinz-admin image set <name> <file>` <-- HERE
-- `cmdImagePosition` — bin/pinz-admin.js:108
-  - flow: terminal — `pinz-admin image position <name> "50% 20%"` <-- HERE
+- `cmdImagePosition` — bin/pinz-admin.js:110
+  - flow: terminal — `pinz-admin image position <name> "50% 20% [64px 64px]"` <-- HERE
+
+## chrome-tab-extension
+
+- (module) — chrome-tab-extension/newtab.js:1
+  - flow: Chrome new tab — chrome_url_overrides loads newtab.html -> redirect <-- HERE
 
 ## src
 
@@ -35,17 +40,20 @@ means a function missing its flow line.
   - flow: server start — server.js -> createApp() <-- HERE
 - (module) — src/app.js:35
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:52
+- (module) — src/app.js:54
   - flow: pin dialog (new link) -> POST /add <-- HERE -> addLink -> redirect /
-- (module) — src/app.js:63
+- (module) — src/app.js:65
   - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
   - problem: fixing a link's fields and completing/restoring it are one dialog to the user.
-- (module) — src/app.js:76
+- (module) — src/app.js:78
+  - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
+  - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
+- (module) — src/app.js:90
   - flow: main screen <img src="/img"> -> GET /img <-- HERE
   - problem: the profile picture lives under data/, which is private.
-- (module) — src/app.js:87
+- (module) — src/app.js:101
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:96
+- (module) — src/app.js:110
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -63,7 +71,7 @@ means a function missing its flow line.
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:60
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:105
+- `homePage` — src/render.js:116
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -98,7 +106,7 @@ means a function missing its flow line.
 - `editLink` — src/store.js:184
   - flow: edit dialog -> POST /edit -> editLink() <-- HERE
   - problem: a pinned link's URL, title, or tags may need fixing, and finishing with a link should archive it, not delete it (nothing is ever lost).
-- `groupByTag` — src/store.js:205
+- `groupByTag` — src/store.js:206
   - flow: GET / -> homepage handler -> groupByTag() <-- HERE
   - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order, and completed links belong in the archive, not here.
 - `fetchTitle` — src/title.js:7
@@ -107,12 +115,15 @@ means a function missing its flow line.
 
 ## static
 
-- `filter` — static/app.js:41
+- `filter` — static/app.js:39
   - flow: main screen search box — user types (or presses /) -> filter() <-- HERE
   - problem: finding one link among many without leaving the page.
-- `dialog` — static/app.js:74
+- `dialog` — static/app.js:75
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
+- `photo` — static/app.js:138
+  - flow: main screen — user drags the photo -> POST /image-position
+  - problem: placing the photo by editing "X% Y%" numbers is guesswork.
 
 ## Self-audit
 

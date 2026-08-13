@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { requireAuth, handleLogin, handleLogout } from './auth.js';
-import { loadUserDoc, addLink, editLink, groupByTag, getDataDir, normalizeTag, NoUserFileError } from './store.js';
+import { loadUserDoc, addLink, editLink, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 
@@ -70,6 +70,18 @@ export function createApp() {
     const done = action === 'done' ? true : action === 'restore' ? false : undefined;
     const result = await editLink(req.user, String(req.body?.orig ?? ''), { ...fields, done });
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'missing'}=1`);
+  }));
+
+  // The problem is placing the photo by typing "X% Y%" numbers is guesswork; dragging
+  // it is the honest interface. The way we solve this is letting the client persist
+  // the dropped position/size here, validated exactly like the CLI's image position.
+  // flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
+  app.post('/image-position', wrap(requireAuth), wrap(async (req, res) => {
+    const LEN = /^\d+(\.\d+)?(%|px|rem|em|vw|vh)$/;
+    const tokens = String(req.body?.pos ?? '').trim().split(/\s+/).filter(Boolean);
+    if (tokens.length < 2 || tokens.length > 4 || !tokens.every(t => LEN.test(t))) return res.status(400).end();
+    await mutateUserDoc(req.user, doc => { doc.info.picture_position = tokens.join(' '); });
+    res.status(204).end();
   }));
 
   // The problem is the profile picture lives under data/, which is private. The way we

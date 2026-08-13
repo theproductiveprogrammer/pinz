@@ -131,6 +131,40 @@
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
   }
 
+  // The problem is placing the photo by editing "X% Y%" numbers is guesswork.
+  // The way we solve this is making the photo draggable: drop it where it should
+  // live and the position (plus current size) is saved back to the YAML.
+  // flow: main screen — user drags the photo -> POST /image-position
+  const photo = document.querySelector('.photo');
+  if (photo) {
+    photo.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      photo.setPointerCapture(e.pointerId);
+      photo.classList.add('dragging');
+      // keep the grab point — don't jump the image's center under the cursor
+      const r0 = photo.getBoundingClientRect();
+      const dx = r0.left + r0.width / 2 - e.clientX;
+      const dy = r0.top + r0.height / 2 - e.clientY;
+      const place = ev => {
+        photo.style.left = `${((ev.clientX + dx) / innerWidth * 100).toFixed(1)}%`;
+        photo.style.top = `${((ev.clientY + dy) / innerHeight * 100).toFixed(1)}%`;
+      };
+      const up = () => {
+        photo.removeEventListener('pointermove', place);
+        photo.classList.remove('dragging');
+        const r = photo.getBoundingClientRect();
+        const pos = `${photo.style.left} ${photo.style.top} ${Math.round(r.width)}px ${Math.round(r.height)}px`;
+        fetch('/image-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `pos=${encodeURIComponent(pos)}`,
+        }).catch(() => { /* position still applies until reload */ });
+      };
+      photo.addEventListener('pointermove', place);
+      photo.addEventListener('pointerup', up, { once: true });
+    });
+  }
+
   // Fill the title field from the server's /title lookup when the user leaves it blank.
   const linkInput = document.getElementById('add-link');
   const titleInput = document.getElementById('add-title');
