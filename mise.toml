@@ -7,7 +7,7 @@ node = "lts"
 # 7469 spells PINZ on a phone keypad
 PORT = "7469"
 # Production server + account, used by the image/backup tasks
-PINZ_SERVER = "noah@134.122.127.41"
+PINZ_SERVER = "noah@the-ark"
 PINZ_USER = "charles.lobo"
 HOST = "127.0.0.1"
 DATA_DIR = "{{config_root}}/data"
