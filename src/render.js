@@ -1,0 +1,117 @@
+// render.js — HTML pages built from template literals; every interpolation escaped.
+
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "Wed 13 Aug 2026, 14:05:36" — the client clock in static/app.js uses the same format.
+export function fmtDateTime(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Shared page skeleton around every rendered page.
+function page(title, body) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📌</text></svg>">
+</head>
+<body>
+${body}
+<script src="/static/app.js" defer></script>
+</body>
+</html>`;
+}
+
+// flow: GET /login and failed POST /login -> loginPage() <-- HERE
+export function loginPage({ error = '' } = {}) {
+  return page('pinz — login', `
+<main class="login">
+  <h1>pinz</h1>
+  ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
+  <form method="post" action="/login">
+    <input name="username" placeholder="username" autocomplete="username" autofocus required>
+    <input name="password" type="password" placeholder="password" autocomplete="current-password" required>
+    <button>log in</button>
+  </form>
+</main>`);
+}
+
+// flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
+export function errorPage(message, status = 500) {
+  return page('pinz — problem', `
+<main class="login">
+  <h1>pinz</h1>
+  <p class="error">${escapeHtml(message)}</p>
+  <p><a href="/">back</a></p>
+</main>`);
+}
+
+function linkItem(l) {
+  const text = (l.title ?? '').trim() || l.link;
+  const search = [l.title ?? '', l.link, ...l.tags].join(' ').toLowerCase();
+  return `<li data-search="${escapeHtml(search)}"><a href="${escapeHtml(l.link)}" target="_blank" rel="noopener">${escapeHtml(text)}</a></li>`;
+}
+
+// One collapsible "> #tag" section; server renders collapsed, client restores state.
+function tagGroup([tag, links]) {
+  return `<details class="tag" data-tag="${escapeHtml(tag)}">
+<summary>#${escapeHtml(tag)} <span class="count">${links.length}</span></summary>
+<ul>
+${links.map(linkItem).join('\n')}
+</ul>
+</details>`;
+}
+
+// The problem is picture_position comes from a hand-editable YAML file but lands in a
+// style attribute. The way we solve this is only accepting a plain CSS position token
+// and falling back to center otherwise.
+function safePosition(pos) {
+  return typeof pos === 'string' && /^[a-z0-9% .-]{1,40}$/i.test(pos) ? pos : 'center';
+}
+
+// The problem is the whole app is one screen: date, search, add form, and the user's
+// links grouped under collapsible tags, with their picture alongside. The way we solve
+// this is rendering everything server-side here; static/app.js only enhances it.
+// flow: main screen — GET / -> homePage() <-- HERE
+export function homePage({ username, doc, groups, duplicate = false }) {
+  const name = (doc.info.name ?? '').trim() || username;
+  const allTags = [...new Set(groups.map(([t]) => t))].filter(t => t !== 'untagged');
+  return page('pinz', `
+<header>
+  <time id="clock">${fmtDateTime()}</time>
+  <nav>
+    <span class="who">${escapeHtml(name)}</span>
+    <form method="post" action="/logout"><button class="quiet">log out</button></form>
+  </nav>
+</header>
+<section class="controls">
+  <input id="search" type="search" placeholder="search (press /)" autocomplete="off">
+  <details class="add">
+    <summary>+ pin a link</summary>
+    <form method="post" action="/add">
+      <input id="add-link" name="link" type="url" placeholder="https://…" required>
+      <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">
+      <input name="tags" list="all-tags" placeholder="tags, comma, separated">
+      <datalist id="all-tags">${allTags.map(t => `<option value="${escapeHtml(t)}">`).join('')}</datalist>
+      <button>pin</button>
+    </form>
+  </details>
+  ${duplicate ? '<p class="notice">Already pinned — not added twice.</p>' : ''}
+</section>
+<main>
+  <section class="groups">
+${groups.map(tagGroup).join('\n')}
+${groups.length === 0 ? '<p class="empty">Nothing pinned yet.</p>' : ''}
+  </section>
+  ${doc.info.picture ? `<aside><img src="/img" alt="" style="object-position:${escapeHtml(safePosition(doc.info.picture_position))}"></aside>` : ''}
+</main>`);
+}
