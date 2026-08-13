@@ -47,8 +47,10 @@ function promptHidden(question) {
   });
 }
 
-async function promptPassword() {
-  const pw = await promptHidden('password: ');
+// Says whose pinz password is being set — over ssh, a bare "password:" reads
+// as an ssh/sudo prompt and stops people cold.
+async function promptPassword(username) {
+  const pw = await promptHidden(`new pinz login password for "${username}" (hidden): `);
   if (pw.length < 4) die('password too short (min 4 characters)');
   return bcrypt.hashSync(pw, 12);
 }
@@ -57,7 +59,7 @@ async function promptPassword() {
 async function cmdUserAdd(username) {
   if (!validUsername(username)) die('username must be lowercase letters, digits, "_", "-", or interior dots (and not "users")');
   if (await findUser(username)) die(`user "${username}" already exists`);
-  const hash = await promptPassword();
+  const hash = await promptPassword(username);
   await mutateUsers(doc => {
     doc.users.push({ username, password_hash: hash, created: new Date().toISOString().slice(0, 10) });
   });
@@ -69,7 +71,7 @@ async function cmdUserAdd(username) {
 // flow: terminal — `pinz-admin user passwd <name>` <-- HERE
 async function cmdUserPasswd(username) {
   if (!await findUser(username)) die(`no such user "${username}"`);
-  const hash = await promptPassword();
+  const hash = await promptPassword(username);
   await mutateUsers(doc => {
     doc.users.find(u => u.username === username).password_hash = hash;
   });
