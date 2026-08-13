@@ -79,6 +79,30 @@
     const doneBtn = document.getElementById('pin-done');
     const restoreBtn = document.getElementById('pin-restore');
 
+    // The tag chips mirror the tags input both ways: clicking a chip toggles
+    // the tag in the input; typing in the input relights the chips. No native
+    // datalist dropdown — it covered the save button.
+    const tagsInput = form.elements.tags;
+    const picker = document.getElementById('tag-picker');
+    const parseTags = () => tagsInput.value.split(/[\s,]+/).map(t => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
+    const refreshChips = () => {
+      if (!picker) return;
+      const current = new Set(parseTags());
+      for (const chip of picker.children) chip.classList.toggle('on', current.has(chip.dataset.tag));
+    };
+    if (picker) {
+      picker.addEventListener('click', e => {
+        const chip = e.target.closest('.chip');
+        if (!chip) return;
+        const tag = chip.dataset.tag;
+        const current = parseTags();
+        const next = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag];
+        tagsInput.value = next.join(', ');
+        refreshChips();
+      });
+      tagsInput.addEventListener('input', refreshChips);
+    }
+
     const openDialog = li => {
       form.reset();
       const editing = !!li;
@@ -91,6 +115,7 @@
       submit.textContent = editing ? 'save' : 'pin';
       doneBtn.hidden = !editing || li.dataset.done === '1';
       restoreBtn.hidden = !editing || li.dataset.done !== '1';
+      refreshChips();
       dialog.showModal();
       form.elements.link.focus();
     };
@@ -100,9 +125,9 @@
       const btn = e.target.closest('li .edit');
       if (btn) openDialog(btn.closest('li'));
     });
+    // Closing is DELIBERATE only — cancel button or Esc. A stray click outside
+    // must never eat what the user typed.
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
-    // click on the backdrop (the dialog element itself, not its children) closes
-    dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
   }
 
   // Fill the title field from the server's /title lookup when the user leaves it blank.

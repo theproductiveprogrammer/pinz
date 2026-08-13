@@ -140,8 +140,8 @@ ${archived.map(linkItem).join('\n')}
     <input type="hidden" name="orig" value="">
     <input id="add-link" name="link" type="url" placeholder="https://…" required>
     <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">
-    <input id="add-tags" name="tags" list="all-tags" placeholder="tags (space or comma separated)">
-    <datalist id="all-tags">${allTags.map(t => `<option value="${escapeHtml(t)}">`).join('')}</datalist>
+    <input id="add-tags" name="tags" placeholder="tags (space or comma separated)">
+    ${allTags.length ? `<div id="tag-picker">${allTags.map(t => `<button type="button" class="chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
     <div class="actions">
       <button type="button" class="quiet" id="pin-cancel">cancel</button>
       <button name="action" value="done" class="quiet" id="pin-done">✓ complete</button>
