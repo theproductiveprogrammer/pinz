@@ -59,11 +59,11 @@ means a function missing its flow line.
   - problem: turning a correct password into a browser session, giving nothing away on failure.
 - `handleLogout` — src/auth.js:106
   - flow: header log-out button -> POST /logout -> handleLogout() <-- HERE
-- `loginPage` — src/render.js:35
+- `loginPage` — src/render.js:46
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
-- `errorPage` — src/render.js:49
+- `errorPage` — src/render.js:60
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:94
+- `homePage` — src/render.js:105
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -107,10 +107,10 @@ means a function missing its flow line.
 
 ## static
 
-- `filter` — static/app.js:39
+- `filter` — static/app.js:41
   - flow: main screen search box — user types (or presses /) -> filter() <-- HERE
   - problem: finding one link among many without leaving the page.
-- `dialog` — static/app.js:72
+- `dialog` — static/app.js:74
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
 

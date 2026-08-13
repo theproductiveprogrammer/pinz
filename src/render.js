@@ -1,16 +1,26 @@
 // render.js — HTML pages built from template literals; every interpolation escaped.
 
+// The problem is /static ships with an hour of browser cache, so a deploy could
+// leave users on stale CSS/JS mismatched with fresh HTML. The way we solve this is
+// stamping asset URLs with the server's boot time — every restart (deploys restart
+// the service) is a new URL, and unchanged assets stay cached between deploys.
+const ASSET_V = Date.now().toString(36);
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-// "Wed 13 Aug 2026, 14:05:36" — the client clock in static/app.js uses the same format.
-export function fmtDateTime(d = new Date()) {
+// Masthead clock, spelled out like a ledger heading — "Wednesday 13 August" +
+// "14:05:36". The client tick in static/app.js uses the same format.
+export function fmtDate(d = new Date()) {
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+export function fmtTime(d = new Date()) {
   const p = n => String(n).padStart(2, '0');
-  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 // Shared page skeleton around every rendered page.
@@ -21,12 +31,13 @@ function page(title, body) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="preload" href="/static/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/style.css?v=${ASSET_V}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📌</text></svg>">
 </head>
 <body>
 ${body}
-<script src="/static/app.js" defer></script>
+<script src="/static/app.js?v=${ASSET_V}" defer></script>
 </body>
 </html>`;
 }
@@ -35,7 +46,7 @@ ${body}
 export function loginPage({ error = '' } = {}) {
   return page('pinz — login', `
 <main class="login">
-  <h1>pinz</h1>
+  <h1 class="wordmark">pinz</h1>
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
   <form method="post" action="/login">
     <input name="username" placeholder="username" autocomplete="username" autofocus required>
@@ -49,7 +60,7 @@ export function loginPage({ error = '' } = {}) {
 export function errorPage(message, status = 500) {
   return page('pinz — problem', `
 <main class="login">
-  <h1>pinz</h1>
+  <h1 class="wordmark">pinz</h1>
   <p class="error">${escapeHtml(message)}</p>
   <p><a href="/">back</a></p>
 </main>`);
@@ -97,21 +108,21 @@ export function homePage({ username, doc, groups, notice = '' }) {
   const archived = doc.links.filter(l => l.done);
   return page('pinz', `
 <header>
-  <time id="clock">${fmtDateTime()}</time>
   <nav>
     <span class="who">${escapeHtml(name)}</span>
     <form method="post" action="/logout"><button class="quiet">log out</button></form>
   </nav>
+  <time id="clock"><span id="clock-date">${fmtDate()}</span><span id="clock-time">${fmtTime()}</span></time>
 </header>
 <section class="controls">
   <input id="search" type="search" placeholder="search (press /)" autocomplete="off">
-  <button type="button" class="quiet" id="pin-new">+ pin a link</button>
-  ${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
+  <button type="button" id="pin-new">+ pin a link</button>
 </section>
+${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
 <main>
   <section class="groups">
 ${groups.map(tagGroup).join('\n')}
-${groups.length === 0 ? '<p class="empty">Nothing pinned yet.</p>' : ''}
+${groups.length === 0 ? '<p class="empty">Nothing pinned yet — pin your first link above.</p>' : ''}
 ${archived.length ? `<details class="tag archive" data-tag="archive">
 <summary>archive <span class="count">${archived.length}</span></summary>
 <ul>
@@ -119,7 +130,7 @@ ${archived.map(linkItem).join('\n')}
 </ul>
 </details>` : ''}
   </section>
-  ${doc.info.picture ? `<aside><img src="/img" alt="" style="object-position:${escapeHtml(safePosition(doc.info.picture_position))}"></aside>` : ''}
+  ${doc.info.picture ? `<aside><figure class="photo"><span class="pinhead"></span><img src="/img" alt="" style="object-position:${escapeHtml(safePosition(doc.info.picture_position))}"></figure></aside>` : ''}
 </main>
 <dialog id="pin-dialog">
   <form method="post" action="/add" id="pin-form">

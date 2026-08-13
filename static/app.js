@@ -4,15 +4,17 @@
 (() => {
   'use strict';
 
-  // Keep the header clock alive; format matches src/render.js fmtDateTime.
-  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const clock = document.getElementById('clock');
-  if (clock) {
+  // Keep the masthead clock alive; format matches fmtDate/fmtTime in src/render.js.
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const clockDate = document.getElementById('clock-date');
+  const clockTime = document.getElementById('clock-time');
+  if (clockDate && clockTime) {
     const p = n => String(n).padStart(2, '0');
     const tick = () => {
       const d = new Date();
-      clock.textContent = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      clockDate.textContent = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+      clockTime.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
     };
     tick();
     setInterval(tick, 1000);
