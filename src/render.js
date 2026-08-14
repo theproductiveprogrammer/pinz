@@ -167,5 +167,6 @@ ${archived.map(linkItem).join('\n')}
       <button name="action" value="save" id="pin-submit">pin</button>
     </div>
   </form>
-</dialog>`);
+</dialog>
+<div id="upload-veil" hidden><div class="card"><span id="upload-label">uploading…</span><div class="bar"><i id="upload-bar"></i></div></div></div>`);
 }

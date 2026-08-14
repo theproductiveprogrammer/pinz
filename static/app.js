@@ -178,28 +178,48 @@
       if (orphanFile) { removeFile(orphanFile).catch(() => {}); orphanFile = ''; }
     });
 
+    // The problem is a dropped file takes real seconds to reach the server, and
+    // silence reads as "nothing happened" — inviting a second drop. The way we
+    // solve this is dimming the page behind an uploading card with a live progress
+    // bar the moment the file lands, and ignoring further drops until it's done.
+    // (XHR, not fetch: only XHR reports upload progress.)
+    const veil = document.getElementById('upload-veil');
+    const veilLabel = document.getElementById('upload-label');
+    const veilBar = document.getElementById('upload-bar');
+    const uploadFile = f => new Promise(resolve => {
+      veilLabel.textContent = `uploading ${f.name}…`;
+      veilBar.style.width = '0%';
+      veil.hidden = false;
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/upload?name=${encodeURIComponent(f.name)}`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = ev => {
+        if (ev.lengthComputable) veilBar.style.width = `${Math.round(ev.loaded / ev.total * 100)}%`;
+      };
+      xhr.onload = () => { veil.hidden = true; resolve({ ok: xhr.status >= 200 && xhr.status < 300, body: xhr.responseText }); };
+      xhr.onerror = () => { veil.hidden = true; resolve({ ok: false, body: '' }); };
+      xhr.send(f);
+    });
+
     // The problem is getting a document in should be as direct as dragging the
     // photo around. The way we solve this is accepting a file dropped anywhere on
     // the page: upload it (25MB cap), then open the pin dialog to title and tag it.
-    // flow: OS file dropped on the page -> POST /upload -> openDialog(file mode)
+    // flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
     addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
     addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
     addEventListener('drop', async e => {
       e.preventDefault();
       document.body.classList.remove('dropping');
       const f = e.dataTransfer?.files?.[0];
-      if (!f) return;
-      const res = await fetch(`/upload?name=${encodeURIComponent(f.name)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: f,
-      }).catch(() => null);
-      if (!res || !res.ok) {
-        const msg = res && (await res.json().catch(() => null))?.error;
+      if (!f || !veil.hidden) return; // an upload is already in flight
+      const res = await uploadFile(f);
+      if (!res.ok) {
+        let msg = '';
+        try { msg = JSON.parse(res.body).error; } catch { /* not json */ }
         alert(msg || 'upload failed');
         return;
       }
-      const { file, title } = await res.json();
+      const { file, title } = JSON.parse(res.body);
       orphanFile = file;
       openDialog(null, { file, title });
     });

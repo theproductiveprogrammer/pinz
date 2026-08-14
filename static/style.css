@@ -103,6 +103,31 @@ button.quiet:hover { color: var(--accent); }
 
 .notice { color: var(--accent); margin: -0.75rem 0 1rem; font-size: 0.9rem; }
 body.dropping { outline: 3px dashed var(--accent); outline-offset: -6px; }
+
+/* upload veil: instant feedback the moment a file is dropped */
+#upload-veil {
+  position: fixed;
+  inset: 0;
+  background: rgb(10 10 10 / 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#upload-veil[hidden] { display: none; }
+#upload-veil .card {
+  background: var(--bg);
+  border: 2px solid var(--rule);
+  padding: 1.2rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: min(20rem, 80vw);
+  font-family: var(--display);
+  font-weight: 700;
+}
+#upload-veil .bar { height: 6px; background: var(--line); }
+#upload-veil .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 120ms; }
 .error { color: var(--error); }
 .empty { color: var(--muted); }
 
