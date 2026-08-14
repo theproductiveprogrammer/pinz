@@ -160,9 +160,9 @@ ${archived.map(linkItem).join('\n')}
     <input id="add-tags" name="tags" placeholder="tags (space or comma separated)">
     ${allTags.length ? `<div id="tag-picker">${allTags.map(t => `<button type="button" class="chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
     <div class="actions">
-      <button type="button" class="quiet danger" id="pin-delete" hidden>✕ delete forever</button>
+      <button type="button" class="quiet danger" id="pin-delete" hidden>✕ delete</button>
       <button type="button" class="quiet" id="pin-cancel">cancel</button>
-      <button name="action" value="done" class="quiet" id="pin-done">✓ complete</button>
+      <button name="action" value="done" class="quiet" id="pin-done">✓ archive</button>
       <button name="action" value="restore" class="quiet" id="pin-restore">↩ restore</button>
       <button name="action" value="save" id="pin-submit">pin</button>
     </div>

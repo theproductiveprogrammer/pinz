@@ -111,8 +111,8 @@
     let orphanFile = '';
 
     // One dialog, three shapes: pin a link, edit a pin, pin a fresh upload.
-    // File pins show a filename row instead of the URL input and gain the
-    // delete-forever button (documents cost disk; links never get one).
+    // File pins show a filename row instead of the URL input; every pin being
+    // edited can be archived or deleted.
     const openDialog = (li, upload) => {
       form.reset();
       const editing = !!li;
@@ -139,7 +139,7 @@
       submit.textContent = editing ? 'save' : 'pin';
       doneBtn.hidden = !editing || li.dataset.done === '1';
       restoreBtn.hidden = !editing || li.dataset.done !== '1';
-      deleteBtn.hidden = !(editing && file);
+      deleteBtn.hidden = !editing;
       refreshChips();
       dialog.showModal();
       (file ? form.elements.title : form.elements.link).focus();
@@ -154,28 +154,28 @@
     // must never eat what the user typed.
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
 
-    const removeFile = file => fetch('/delete-file', {
+    const removePin = key => fetch('/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `file=${encodeURIComponent(file)}`,
+      body: `key=${encodeURIComponent(key)}`,
     });
 
-    // The problem is documents cost real disk, so unlike links they need a way to
-    // truly go away. The way we solve this is a confirmed delete that removes the
-    // entry and the stored file; the download link sits right beside it for a
-    // last copy first.
-    // flow: edit dialog (file pin) -> "✕ delete forever" -> POST /delete-file
+    // The problem is archive keeps everything, and some pins should truly go —
+    // files cost disk, dead links are clutter. The way we solve this is a
+    // confirmed delete on any pin being edited; for files, the download link sits
+    // right beside it for a last copy first.
+    // flow: edit dialog -> "✕ delete" -> POST /delete
     deleteBtn.addEventListener('click', async () => {
-      const file = form.elements.file.value;
-      if (!file || !confirm('Delete this file forever? It leaves the server for good.')) return;
-      await removeFile(file).catch(() => {});
+      const key = form.elements.file.value || form.elements.orig.value;
+      if (!key || !confirm('Delete this pin forever?')) return;
+      await removePin(key).catch(() => {});
       location.reload();
     });
 
     // pinning claims the upload; closing without pinning deletes the orphan
     form.addEventListener('submit', () => { orphanFile = ''; });
     dialog.addEventListener('close', () => {
-      if (orphanFile) { removeFile(orphanFile).catch(() => {}); orphanFile = ''; }
+      if (orphanFile) { removePin(orphanFile).catch(() => {}); orphanFile = ''; }
     });
 
     // The problem is a dropped file takes real seconds to reach the server, and

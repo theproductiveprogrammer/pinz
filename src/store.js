@@ -220,17 +220,20 @@ export function addFilePin(username, { file, title, tags }) {
   }).then(() => 'ok');
 }
 
-// The problem is documents, unlike weightless links, cost real disk — archive-only
-// would leak forever. The way we solve this is a true delete: the entry leaves the
-// YAML and the stored file leaves the disk, inside the same write lock. Also cleans
-// up never-pinned orphans (uploaded, then dialog cancelled).
-// flow: edit dialog "delete forever" (or cancelled upload) -> POST /delete-file -> deleteFilePin() <-- HERE
-export function deleteFilePin(username, file) {
+// The problem is some pins deserve true removal, not archiving — files cost disk,
+// and dead links are clutter the archive shouldn't have to keep. The way we solve
+// this is a real delete inside the write lock: the entry leaves the YAML, and a file
+// pin's stored file leaves the disk with it.
+// flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete -> deletePin() <-- HERE
+export function deletePin(username, key) {
   return mutateUserDoc(username, async doc => {
-    const before = doc.links.length;
-    doc.links = doc.links.filter(l => l.file !== file);
-    try { await fsp.unlink(path.join(dataDir, file)); } catch { /* already gone */ }
-    return doc.links.length !== before ? doc : false;
+    const entry = doc.links.find(l => pinKey(l) === key);
+    if (!entry) return false;
+    doc.links = doc.links.filter(l => l !== entry);
+    if (entry.file) {
+      try { await fsp.unlink(path.join(dataDir, entry.file)); } catch { /* already gone */ }
+    }
+    return doc;
   }).then(() => 'ok');
 }
 

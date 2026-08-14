@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { requireAuth, handleLogin, handleLogout } from './auth.js';
 import fsp from 'node:fs/promises';
-import { loadUserDoc, addLink, editLink, addFilePin, deleteFilePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
+import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 
@@ -137,13 +137,14 @@ export function createApp() {
     }
   }));
 
-  // flow: edit dialog "delete forever" (or a cancelled upload) -> POST /delete-file <-- HERE
-  app.post('/delete-file', wrap(requireAuth), wrap(async (req, res) => {
-    const rel = ownFilePath(req.user, req.body?.file);
-    if (!rel) return res.status(400).end();
-    await deleteFilePin(req.user, rel);
+  // flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete <-- HERE -> deletePin
+  app.post('/delete', wrap(requireAuth), wrap(async (req, res) => {
+    const key = String(req.body?.key ?? '');
+    if (!key) return res.status(400).end();
+    await deletePin(req.user, key);
     // orphans (uploaded but never pinned) have no entry — remove the file itself too
-    await fsp.unlink(path.join(getDataDir(), rel)).catch(() => {});
+    const rel = ownFilePath(req.user, key);
+    if (rel) await fsp.unlink(path.join(getDataDir(), rel)).catch(() => {});
     res.status(204).end();
   }));
 

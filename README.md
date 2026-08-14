@@ -75,7 +75,7 @@ All commands accept `--data <dir>`. Passwords are prompted (hidden), or piped: `
 
 ### Files
 
-Drop any file onto the page to pin it (25MB max). It uploads to `data/files/<user>/`, the pin dialog opens to title/tag it, and it lists like a link with an extension chip. Click to open (images/pdf/txt inline) or download (everything else — including svg/html, which never render on this origin). Unlike links, file pins have **✕ delete forever** in the edit dialog: the entry and the stored file are both removed — archive alone would leak disk. A cancelled drop cleans up its upload. YAML shape:
+Drop any file onto the page to pin it (25MB max, live progress veil). It uploads to `data/files/<user>/`, the pin dialog opens to title/tag it, and it lists like a link with an extension chip. Click to open (images/pdf/txt inline) or download (everything else — including svg/html, which never render on this origin). Any pin can be **✓ archived** (kept forever, out of the way) or **✕ deleted** (gone for good — a file pin's stored file is removed with it). A cancelled drop cleans up its upload. YAML shape:
 
 ```yaml
 links:

@@ -52,16 +52,16 @@ means a function missing its flow line.
   - flow: file pin clicked -> GET /file/* <-- HERE
   - problem: pinned documents are as private as the bookmarks.
 - (module) — src/app.js:140
-  - flow: edit dialog "delete forever" (or a cancelled upload) -> POST /delete-file <-- HERE
-- (module) — src/app.js:153
+  - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete <-- HERE -> deletePin
+- (module) — src/app.js:154
   - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
   - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
-- (module) — src/app.js:165
+- (module) — src/app.js:166
   - flow: main screen <img src="/img"> -> GET /img <-- HERE
   - problem: the profile picture lives under data/, which is private.
-- (module) — src/app.js:176
+- (module) — src/app.js:177
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:185
+- (module) — src/app.js:186
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -117,10 +117,10 @@ means a function missing its flow line.
 - `addFilePin` — src/store.js:211
   - flow: file dropped -> POST /upload -> pin dialog -> POST /add -> addFilePin() <-- HERE
   - problem: an uploaded document needs to become a pin like any link.
-- `deleteFilePin` — src/store.js:228
-  - flow: edit dialog "delete forever" (or cancelled upload) -> POST /delete-file -> deleteFilePin() <-- HERE
-  - problem: documents, unlike weightless links, cost real disk — archive-only would leak forever.
-- `groupByTag` — src/store.js:244
+- `deletePin` — src/store.js:228
+  - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete -> deletePin() <-- HERE
+  - problem: some pins deserve true removal, not archiving — files cost disk, and dead links are clutter the archive shouldn't have to keep.
+- `groupByTag` — src/store.js:247
   - flow: GET / -> homepage handler -> groupByTag() <-- HERE
   - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order, and completed links belong in the archive, not here.
 - `fetchTitle` — src/title.js:7
@@ -136,12 +136,12 @@ means a function missing its flow line.
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
 - (module) — static/app.js:167
-  - flow: edit dialog (file pin) -> "✕ delete forever" -> POST /delete-file
-  - problem: documents cost real disk, so unlike links they need a way to truly go away.
-- `addEventListener` — static/app.js:185
-  - flow: OS file dropped on the page -> POST /upload -> openDialog(file mode)
+  - flow: edit dialog -> "✕ delete" -> POST /delete
+  - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
+- `addEventListener` — static/app.js:208
+  - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- `photo` — static/app.js:214
+- `photo` — static/app.js:234
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
 
