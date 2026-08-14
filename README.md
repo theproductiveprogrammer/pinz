@@ -73,6 +73,17 @@ node bin/pinz-admin.js image position <username> "50% 20%"
 
 All commands accept `--data <dir>`. Passwords are prompted (hidden), or piped: `printf 'pw' | node bin/pinz-admin.js user add me`.
 
+### Files
+
+Drop any file onto the page to pin it (25MB max). It uploads to `data/files/<user>/`, the pin dialog opens to title/tag it, and it lists like a link with an extension chip. Click to open (images/pdf/txt inline) or download (everything else — including svg/html, which never render on this origin). Unlike links, file pins have **✕ delete forever** in the edit dialog: the entry and the stored file are both removed — archive alone would leak disk. A cancelled drop cleans up its upload. YAML shape:
+
+```yaml
+links:
+  - file: files/charles.lobo/1786666259201-notes.txt
+    title: My Notes
+    tags: [docs]
+```
+
 ### Notes
 
 - A missing `data/<user>.yml` is an error, never auto-created — only `user add` creates it.

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { requireAuth, handleLogin, handleLogout } from './auth.js';
-import { loadUserDoc, addLink, editLink, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
+import fsp from 'node:fs/promises';
+import { loadUserDoc, addLink, editLink, addFilePin, deleteFilePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 
@@ -18,6 +19,17 @@ function parseHttpUrl(raw) {
     return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
   } catch { return null; }
 }
+
+// A stored-file path is only trusted if it's the plain "files/<user>/<name>" shape —
+// no separators in the name, so no traversal, and never another user's directory.
+function ownFilePath(user, rel) {
+  const m = /^files\/([^/]+)\/([^/]+)$/.exec(String(rel ?? ''));
+  return m && m[1] === user && m[2] !== '.' && m[2] !== '..' ? rel : null;
+}
+
+// Extensions safe to render in the browser; everything else (svg and html included —
+// they can carry scripts into the logged-in origin) downloads instead.
+const INLINE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'pdf', 'txt']);
 
 // flow: server start — server.js -> createApp() <-- HERE
 export function createApp() {
@@ -51,25 +63,88 @@ export function createApp() {
     };
   }
 
-  // flow: pin dialog (new link) -> POST /add <-- HERE -> addLink -> redirect /
+  // flow: pin dialog (new link or uploaded file) -> POST /add <-- HERE -> addLink | addFilePin
   app.post('/add', wrap(requireAuth), wrap(async (req, res) => {
+    const file = ownFilePath(req.user, req.body?.file);
+    if (file) {
+      try { await fsp.access(path.join(getDataDir(), file)); }
+      catch { return res.status(400).send(errorPage('That upload is gone — drop the file again.')); }
+      const title = String(req.body?.title ?? '').trim();
+      const tags = String(req.body?.tags ?? '').split(/[\s,]+/).map(normalizeTag).filter(Boolean);
+      await addFilePin(req.user, { file, title, tags });
+      return res.redirect(303, '/');
+    }
     const fields = pinFields(req.body);
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const result = await addLink(req.user, fields);
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'restored'}=1`);
   }));
 
-  // The problem is fixing a link's fields and completing/restoring it are one dialog
-  // to the user. The way we solve this is one endpoint keyed by the link's original
-  // URL, where the pressed button (action) decides what happens to the done flag.
+  // The problem is fixing a pin's fields and completing/restoring it are one dialog
+  // to the user. The way we solve this is one endpoint keyed by the pin's identity
+  // (URL, or stored path for files), where the pressed button (action) decides what
+  // happens to the done flag. File pins never change their file here.
   // flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
   app.post('/edit', wrap(requireAuth), wrap(async (req, res) => {
-    const fields = pinFields(req.body);
+    const isFile = !!ownFilePath(req.user, req.body?.file);
+    const fields = isFile
+      ? {
+          title: String(req.body?.title ?? '').trim(),
+          tags: String(req.body?.tags ?? '').split(/[\s,]+/).map(normalizeTag).filter(Boolean),
+        }
+      : pinFields(req.body);
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const action = String(req.body?.action ?? 'save');
     const done = action === 'done' ? true : action === 'restore' ? false : undefined;
     const result = await editLink(req.user, String(req.body?.orig ?? ''), { ...fields, done });
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'missing'}=1`);
+  }));
+
+  // The problem is dropped documents need somewhere to live before they're pinned.
+  // The way we solve this is streaming the raw body (25MB cap) into the user's own
+  // files/ directory under a timestamped, sanitized name, returning the stored path
+  // for the pin dialog to submit.
+  // flow: file dropped on the page -> static/app.js -> POST /upload <-- HERE -> pin dialog
+  app.post('/upload', wrap(requireAuth), express.raw({ type: () => true, limit: '25mb' }), wrap(async (req, res) => {
+    const original = String(req.query.name ?? 'file').slice(0, 120);
+    const safe = original.replace(/[^\w.-]+/g, '-').replace(/^[.-]+/, '').slice(0, 80) || 'file';
+    const rel = `files/${req.user}/${Date.now()}-${safe}`;
+    const abs = path.join(getDataDir(), rel);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, req.body);
+    res.json({ file: rel, title: original });
+  }));
+
+  // The problem is pinned documents are as private as the bookmarks. The way we solve
+  // this is serving a file only when it appears in the logged-in user's own YAML,
+  // inline for browser-safe types and as a download for everything else (svg/html
+  // could carry scripts into this origin).
+  // flow: file pin clicked -> GET /file/* <-- HERE
+  app.get('/file/*', wrap(requireAuth), wrap(async (req, res) => {
+    const rel = ownFilePath(req.user, decodeURIComponent(req.params[0] ?? ''));
+    if (!rel) return res.status(400).end();
+    const doc = await loadUserDoc(req.user);
+    const entry = doc.links.find(l => l.file === rel);
+    if (!entry) return res.status(404).end();
+    const abs = path.join(getDataDir(), rel);
+    const name = rel.split('/').pop().replace(/^\d+-/, '');
+    const ext = (name.split('.').pop() ?? '').toLowerCase();
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (INLINE_EXT.has(ext)) {
+      res.sendFile(abs, err => { if (err && !res.headersSent) res.status(404).end(); });
+    } else {
+      res.download(abs, name, err => { if (err && !res.headersSent) res.status(404).end(); });
+    }
+  }));
+
+  // flow: edit dialog "delete forever" (or a cancelled upload) -> POST /delete-file <-- HERE
+  app.post('/delete-file', wrap(requireAuth), wrap(async (req, res) => {
+    const rel = ownFilePath(req.user, req.body?.file);
+    if (!rel) return res.status(400).end();
+    await deleteFilePin(req.user, rel);
+    // orphans (uploaded but never pinned) have no entry — remove the file itself too
+    await fsp.unlink(path.join(getDataDir(), rel)).catch(() => {});
+    res.status(204).end();
   }));
 
   // The problem is placing the photo by typing "X% Y%" numbers is guesswork; dragging
@@ -110,6 +185,7 @@ export function createApp() {
   // flow: any thrown handler error -> errorBoundary() <-- HERE
   // eslint-disable-next-line no-unused-vars
   app.use(function errorBoundary(err, req, res, next) {
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'file too large — 25MB max' });
     if (err instanceof NoUserFileError) return res.status(500).send(errorPage(err.message));
     if (err?.name === 'YAMLException') {
       return res.status(500).send(errorPage(`Your data file has a problem: ${err.reason ?? err.message}${err.mark ? ` (line ${err.mark.line + 1})` : ''}`));

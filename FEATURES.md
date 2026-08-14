@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-40 flows indexed.
+47 flows indexed.
 
 ## .
 
@@ -36,24 +36,32 @@ means a function missing its flow line.
 
 ## src
 
-- `createApp` — src/app.js:23
+- `createApp` — src/app.js:35
   - flow: server start — server.js -> createApp() <-- HERE
-- (module) — src/app.js:35
+- (module) — src/app.js:47
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:54
-  - flow: pin dialog (new link) -> POST /add <-- HERE -> addLink -> redirect /
-- (module) — src/app.js:65
+- (module) — src/app.js:66
+  - flow: pin dialog (new link or uploaded file) -> POST /add <-- HERE -> addLink | addFilePin
+- (module) — src/app.js:87
   - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
-  - problem: fixing a link's fields and completing/restoring it are one dialog to the user.
-- (module) — src/app.js:78
+  - problem: fixing a pin's fields and completing/restoring it are one dialog to the user.
+- (module) — src/app.js:107
+  - flow: file dropped on the page -> static/app.js -> POST /upload <-- HERE -> pin dialog
+  - problem: dropped documents need somewhere to live before they're pinned.
+- (module) — src/app.js:122
+  - flow: file pin clicked -> GET /file/* <-- HERE
+  - problem: pinned documents are as private as the bookmarks.
+- (module) — src/app.js:140
+  - flow: edit dialog "delete forever" (or a cancelled upload) -> POST /delete-file <-- HERE
+- (module) — src/app.js:153
   - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
   - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
-- (module) — src/app.js:90
+- (module) — src/app.js:165
   - flow: main screen <img src="/img"> -> GET /img <-- HERE
   - problem: the profile picture lives under data/, which is private.
-- (module) — src/app.js:101
+- (module) — src/app.js:176
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:110
+- (module) — src/app.js:185
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -71,7 +79,7 @@ means a function missing its flow line.
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:60
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:116
+- `homePage` — src/render.js:122
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -86,27 +94,33 @@ means a function missing its flow line.
   - flow: POST /login -> handleLogin -> findUser() <-- HERE
 - `findUser` — src/store.js:47
   - flow: every authed route -> requireAuth -> findUser() <-- HERE
-- `loadUserDoc` — src/store.js:85
+- `loadUserDoc` — src/store.js:90
   - flow: GET / -> homepage handler -> loadUserDoc() <-- HERE
   - problem: the web app must never see a user without their data file — creation is the CLI's job alone.
-- `loadUserDoc` — src/store.js:85
+- `loadUserDoc` — src/store.js:90
   - flow: GET /img -> image handler -> loadUserDoc() <-- HERE
   - problem: the web app must never see a user without their data file — creation is the CLI's job alone.
-- `mutateUserDoc` — src/store.js:122
+- `mutateUserDoc` — src/store.js:127
   - flow: POST /add -> addLink -> mutateUserDoc() <-- HERE
   - problem: a web save must not clobber a file the user hand-edited into a broken state, and must not conjure files for users the CLI never created.
-- `mutateUserDoc` — src/store.js:122
+- `mutateUserDoc` — src/store.js:127
   - flow: terminal `pinz-admin user add` -> cmdUserAdd -> mutateUserDoc() <-- HERE
   - problem: a web save must not clobber a file the user hand-edited into a broken state, and must not conjure files for users the CLI never created.
-- `mutateUsers` — src/store.js:143
+- `mutateUsers` — src/store.js:148
   - flow: terminal `pinz-admin user add|passwd|rm` -> mutateUsers() <-- HERE
-- `addLink` — src/store.js:163
+- `addLink` — src/store.js:168
   - flow: pin dialog -> POST /add -> addLink() <-- HERE
   - problem: the user adds a link once and expects it pinned exactly once — but re-pinning something they archived means they want it back.
-- `editLink` — src/store.js:184
+- `editLink` — src/store.js:190
   - flow: edit dialog -> POST /edit -> editLink() <-- HERE
-  - problem: a pinned link's URL, title, or tags may need fixing, and finishing with a link should archive it, not delete it (nothing is ever lost).
-- `groupByTag` — src/store.js:206
+  - problem: a pin's URL, title, or tags may need fixing, and finishing with a pin should archive it, not delete it (links are never lost).
+- `addFilePin` — src/store.js:211
+  - flow: file dropped -> POST /upload -> pin dialog -> POST /add -> addFilePin() <-- HERE
+  - problem: an uploaded document needs to become a pin like any link.
+- `deleteFilePin` — src/store.js:228
+  - flow: edit dialog "delete forever" (or cancelled upload) -> POST /delete-file -> deleteFilePin() <-- HERE
+  - problem: documents, unlike weightless links, cost real disk — archive-only would leak forever.
+- `groupByTag` — src/store.js:244
   - flow: GET / -> homepage handler -> groupByTag() <-- HERE
   - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order, and completed links belong in the archive, not here.
 - `fetchTitle` — src/title.js:7
@@ -121,9 +135,15 @@ means a function missing its flow line.
 - `dialog` — static/app.js:75
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
-- `photo` — static/app.js:138
-  - flow: main screen — user drags the photo -> POST /image-position
-  - problem: placing the photo by editing "X% Y%" numbers is guesswork.
+- (module) — static/app.js:167
+  - flow: edit dialog (file pin) -> "✕ delete forever" -> POST /delete-file
+  - problem: documents cost real disk, so unlike links they need a way to truly go away.
+- `addEventListener` — static/app.js:185
+  - flow: OS file dropped on the page -> POST /upload -> openDialog(file mode)
+  - problem: getting a document in should be as direct as dragging the photo around.
+- `photo` — static/app.js:214
+  - flow: main screen — user drags the photo or its corner -> POST /image-position
+  - problem: placing and sizing the photo by editing numbers is guesswork.
 
 ## Self-audit
 

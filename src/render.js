@@ -67,15 +67,20 @@ export function errorPage(message, status = 500) {
 }
 
 // Each item carries its own data as attributes so the edit dialog can prefill
-// without another server round-trip.
+// without another server round-trip. File pins get an extension marker and an
+// authed /file/ href; links keep their URL.
 function linkItem(l) {
-  const text = (l.title ?? '').trim() || l.link;
+  const isFile = !!l.file;
+  const fileName = isFile ? l.file.split('/').pop().replace(/^\d+-/, '') : '';
+  const text = (l.title ?? '').trim() || (isFile ? fileName : l.link);
+  const href = isFile ? `/file/${l.file.split('/').map(encodeURIComponent).join('/')}` : l.link;
+  const ext = isFile ? (fileName.split('.').pop() ?? '').slice(0, 5).toUpperCase() : '';
   // Search matches what the eye sees: the displayed text plus tags — not the
   // URL, which matched all sorts of things the user never typed.
   const search = [text, ...l.tags].join(' ').toLowerCase();
   // Same-tab on purpose: pinz is a start page, so a click hands the tab over
   // to the link (cmd/ctrl-click still opens a new one).
-  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link)}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}"><a href="${escapeHtml(l.link)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
+  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}">${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
@@ -148,11 +153,14 @@ ${archived.map(linkItem).join('\n')}
   <form method="post" action="/add" id="pin-form">
     <h2 id="pin-heading">pin a link</h2>
     <input type="hidden" name="orig" value="">
+    <input type="hidden" name="file" value="">
+    <p id="pin-file-row" hidden><span class="ext" id="pin-file-ext"></span> <span id="pin-file-name"></span> <a id="pin-file-download" href="" class="quiet">download</a></p>
     <input id="add-link" name="link" type="url" placeholder="https://…" required>
     <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">
     <input id="add-tags" name="tags" placeholder="tags (space or comma separated)">
     ${allTags.length ? `<div id="tag-picker">${allTags.map(t => `<button type="button" class="chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
     <div class="actions">
+      <button type="button" class="quiet danger" id="pin-delete" hidden>✕ delete forever</button>
       <button type="button" class="quiet" id="pin-cancel">cancel</button>
       <button name="action" value="done" class="quiet" id="pin-done">✓ complete</button>
       <button name="action" value="restore" class="quiet" id="pin-restore">↩ restore</button>

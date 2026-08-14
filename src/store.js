@@ -64,18 +64,23 @@ export class NoUserFileError extends Error {
 
 // The problem is a hand-edited file can have any shape, and the rest of the app
 // shouldn't have to defend against that. The way we solve this is coercing the doc
-// to {info, tag_order, links} once, dropping entries without a usable link.
+// to {info, tag_order, links} once, dropping entries with neither a usable link nor
+// a pinned file.
 function normalizeDoc(doc) {
   if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) doc = {};
   doc.info = (doc.info && typeof doc.info === 'object' && !Array.isArray(doc.info)) ? doc.info : {};
   doc.tag_order = Array.isArray(doc.tag_order) ? doc.tag_order.map(normalizeTag).filter(Boolean) : [];
+  const usable = v => typeof v === 'string' && v.trim();
   doc.links = (Array.isArray(doc.links) ? doc.links : [])
-    .filter(l => l && typeof l === 'object' && typeof l.link === 'string' && l.link.trim());
+    .filter(l => l && typeof l === 'object' && (usable(l.link) || usable(l.file)));
   for (const l of doc.links) {
     l.tags = Array.isArray(l.tags) ? [...new Set(l.tags.map(normalizeTag).filter(Boolean))] : [];
   }
   return doc;
 }
+
+// A pin's identity for edit/delete: the URL for links, the stored path for files.
+export function pinKey(l) { return l.link ?? l.file; }
 
 // The problem is the web app must never see a user without their data file — creation
 // is the CLI's job alone. The way we solve this is failing loudly (NoUserFileError)
@@ -176,24 +181,57 @@ export function addLink(username, { link, title, tags }) {
   }).then(() => result);
 }
 
-// The problem is a pinned link's URL, title, or tags may need fixing, and finishing
-// with a link should archive it, not delete it (nothing is ever lost). The way we
-// solve this is finding the entry by its current URL inside the write lock, applying
-// the new fields, and setting/clearing a `done` timestamp for complete/restore.
+// The problem is a pin's URL, title, or tags may need fixing, and finishing with a
+// pin should archive it, not delete it (links are never lost). The way we solve this
+// is finding the entry by its identity (URL, or stored path for file pins) inside
+// the write lock, applying the new fields, and setting/clearing a `done` timestamp
+// for complete/restore. File pins keep their file — only link entries change URL.
 // flow: edit dialog -> POST /edit -> editLink() <-- HERE
 export function editLink(username, orig, { link, title, tags, done }) {
   let result = 'ok';
   return mutateUserDoc(username, doc => {
-    const entry = doc.links.find(l => l.link === orig);
+    const entry = doc.links.find(l => pinKey(l) === orig);
     if (!entry) { result = 'missing'; return false; }
-    if (link !== orig && doc.links.some(l => l.link === link)) { result = 'duplicate'; return false; }
-    entry.link = link;
+    if (link !== undefined && entry.link !== undefined) {
+      if (link !== orig && doc.links.some(l => l.link === link)) { result = 'duplicate'; return false; }
+      entry.link = link;
+    }
     entry.title = title;
     entry.tags = [...new Set(tags.map(normalizeTag).filter(Boolean))];
     if (done === true && !entry.done) entry.done = new Date().toISOString();
     if (done === false) delete entry.done;
     return doc;
   }).then(() => result);
+}
+
+// The problem is an uploaded document needs to become a pin like any link. The way
+// we solve this is appending an entry whose identity is its stored path (unique by
+// upload stamp, so no duplicate handling needed).
+// flow: file dropped -> POST /upload -> pin dialog -> POST /add -> addFilePin() <-- HERE
+export function addFilePin(username, { file, title, tags }) {
+  return mutateUserDoc(username, doc => {
+    doc.links.push({
+      file,
+      title: title || '',
+      tags: [...new Set(tags.map(normalizeTag).filter(Boolean))],
+      added: new Date().toISOString(),
+    });
+    return doc;
+  }).then(() => 'ok');
+}
+
+// The problem is documents, unlike weightless links, cost real disk — archive-only
+// would leak forever. The way we solve this is a true delete: the entry leaves the
+// YAML and the stored file leaves the disk, inside the same write lock. Also cleans
+// up never-pinned orphans (uploaded, then dialog cancelled).
+// flow: edit dialog "delete forever" (or cancelled upload) -> POST /delete-file -> deleteFilePin() <-- HERE
+export function deleteFilePin(username, file) {
+  return mutateUserDoc(username, async doc => {
+    const before = doc.links.length;
+    doc.links = doc.links.filter(l => l.file !== file);
+    try { await fsp.unlink(path.join(dataDir, file)); } catch { /* already gone */ }
+    return doc.links.length !== before ? doc : false;
+  }).then(() => 'ok');
 }
 
 // The problem is the page shows links grouped by tag in the user's preferred order,

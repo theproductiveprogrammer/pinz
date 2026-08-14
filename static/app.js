@@ -104,21 +104,45 @@
       tagsInput.addEventListener('input', refreshChips);
     }
 
-    const openDialog = li => {
+    const deleteBtn = document.getElementById('pin-delete');
+    const fileRow = document.getElementById('pin-file-row');
+    // set while an uploaded file sits unpinned; deleted from the server if the
+    // dialog closes without pinning it
+    let orphanFile = '';
+
+    // One dialog, three shapes: pin a link, edit a pin, pin a fresh upload.
+    // File pins show a filename row instead of the URL input and gain the
+    // delete-forever button (documents cost disk; links never get one).
+    const openDialog = (li, upload) => {
       form.reset();
       const editing = !!li;
+      const file = upload?.file || (li ? li.dataset.file : '');
       form.action = editing ? '/edit' : '/add';
-      form.elements.orig.value = editing ? li.dataset.link : '';
+      form.elements.orig.value = editing ? (li.dataset.link || li.dataset.file) : '';
+      form.elements.file.value = file;
       form.elements.link.value = editing ? li.dataset.link : '';
-      form.elements.title.value = editing ? li.dataset.title : '';
+      form.elements.title.value = editing ? li.dataset.title : upload?.title ?? '';
       form.elements.tags.value = editing ? li.dataset.tags : '';
-      heading.textContent = editing ? 'edit link' : 'pin a link';
+      form.elements.link.hidden = !!file;
+      form.elements.link.required = !file;
+      form.elements.link.disabled = !!file;
+      fileRow.hidden = !file;
+      if (file) {
+        const name = file.split('/').pop().replace(/^\d+-/, '');
+        document.getElementById('pin-file-ext').textContent = (name.split('.').pop() ?? '').slice(0, 5).toUpperCase();
+        document.getElementById('pin-file-name').textContent = name;
+        const dl = document.getElementById('pin-file-download');
+        dl.href = `/file/${file.split('/').map(encodeURIComponent).join('/')}`;
+        dl.hidden = !editing; // an unpinned upload isn't servable yet
+      }
+      heading.textContent = editing ? (file ? 'edit file' : 'edit link') : (file ? 'pin a file' : 'pin a link');
       submit.textContent = editing ? 'save' : 'pin';
       doneBtn.hidden = !editing || li.dataset.done === '1';
       restoreBtn.hidden = !editing || li.dataset.done !== '1';
+      deleteBtn.hidden = !(editing && file);
       refreshChips();
       dialog.showModal();
-      form.elements.link.focus();
+      (file ? form.elements.title : form.elements.link).focus();
     };
 
     document.getElementById('pin-new').addEventListener('click', () => openDialog(null));
@@ -129,6 +153,56 @@
     // Closing is DELIBERATE only — cancel button or Esc. A stray click outside
     // must never eat what the user typed.
     document.getElementById('pin-cancel').addEventListener('click', () => dialog.close());
+
+    const removeFile = file => fetch('/delete-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `file=${encodeURIComponent(file)}`,
+    });
+
+    // The problem is documents cost real disk, so unlike links they need a way to
+    // truly go away. The way we solve this is a confirmed delete that removes the
+    // entry and the stored file; the download link sits right beside it for a
+    // last copy first.
+    // flow: edit dialog (file pin) -> "✕ delete forever" -> POST /delete-file
+    deleteBtn.addEventListener('click', async () => {
+      const file = form.elements.file.value;
+      if (!file || !confirm('Delete this file forever? It leaves the server for good.')) return;
+      await removeFile(file).catch(() => {});
+      location.reload();
+    });
+
+    // pinning claims the upload; closing without pinning deletes the orphan
+    form.addEventListener('submit', () => { orphanFile = ''; });
+    dialog.addEventListener('close', () => {
+      if (orphanFile) { removeFile(orphanFile).catch(() => {}); orphanFile = ''; }
+    });
+
+    // The problem is getting a document in should be as direct as dragging the
+    // photo around. The way we solve this is accepting a file dropped anywhere on
+    // the page: upload it (25MB cap), then open the pin dialog to title and tag it.
+    // flow: OS file dropped on the page -> POST /upload -> openDialog(file mode)
+    addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
+    addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+    addEventListener('drop', async e => {
+      e.preventDefault();
+      document.body.classList.remove('dropping');
+      const f = e.dataTransfer?.files?.[0];
+      if (!f) return;
+      const res = await fetch(`/upload?name=${encodeURIComponent(f.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: f,
+      }).catch(() => null);
+      if (!res || !res.ok) {
+        const msg = res && (await res.json().catch(() => null))?.error;
+        alert(msg || 'upload failed');
+        return;
+      }
+      const { file, title } = await res.json();
+      orphanFile = file;
+      openDialog(null, { file, title });
+    });
   }
 
   // The problem is placing and sizing the photo by editing numbers is guesswork.
