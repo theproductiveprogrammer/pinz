@@ -171,6 +171,8 @@ export function createApp() {
     if (/^https?:\/\//.test(pic)) return res.redirect(pic);
     const file = path.resolve(getDataDir(), pic);
     if (!file.startsWith(getDataDir() + path.sep)) return res.status(400).end();
+    // the heaviest asset on the page, refetched every new tab without this
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     res.sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
