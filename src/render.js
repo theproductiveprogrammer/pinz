@@ -92,28 +92,41 @@ export function errorPage(message, status = 500) {
 // Each item carries its own data as attributes so the edit dialog can prefill
 // without another server round-trip. File pins get an extension marker and an
 // authed /file/ href; links keep their URL.
-function linkItem(l) {
+// The link's hostname, or '' for file pins and anything unparsable.
+function hostOf(link) {
+  try { return link ? new URL(link).hostname.toLowerCase() : ''; } catch { return ''; }
+}
+
+// Versioned icon URL for a host, or '' when there's no cached icon.
+const iconUrl = (host, v) => v ? `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}` : '';
+
+// Every row keeps a fixed icon slot so titles line up whether or not the site
+// has an icon; the icons are desaturated in CSS to stay ink-coloured.
+function linkItem(l, icons) {
   const isFile = !!l.file;
   const fileName = isFile ? l.file.split('/').pop().replace(/^\d+-/, '') : '';
   const text = (l.title ?? '').trim() || (isFile ? fileName : l.link);
   const href = isFile ? `/file/${l.file.split('/').map(encodeURIComponent).join('/')}` : l.link;
   const ext = isFile ? (fileName.split('.').pop() ?? '').slice(0, 5).toUpperCase() : '';
+  const host = hostOf(l.link);
+  const v = icons.get(host) ?? '';
+  const icon = v ? `<img class="icon" src="${escapeHtml(iconUrl(host, v))}" alt="" loading="lazy">` : '<i class="icon"></i>';
   // Search matches what the eye sees: the displayed text plus tags — not the
   // URL, which matched all sorts of things the user never typed.
   const search = [text, ...l.tags].join(' ').toLowerCase();
   // Same-tab on purpose: pinz is a start page, so a click hands the tab over
   // to the link (cmd/ctrl-click still opens a new one).
-  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-added="${escapeHtml(l.added ?? '')}" data-search="${escapeHtml(search)}">${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
+  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-added="${escapeHtml(l.added ?? '')}" data-host="${escapeHtml(host)}" data-icon="${escapeHtml(v)}" data-search="${escapeHtml(search)}">${icon}${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
 // The untagged group is the inbox, not a real tag — no "#", styled apart.
-function tagGroup([tag, links]) {
+function tagGroup([tag, links], icons) {
   const untagged = tag === 'untagged';
   return `<details class="tag${untagged ? ' untagged' : ''}" data-tag="${escapeHtml(tag)}">
 <summary>${untagged ? 'untagged' : `#${escapeHtml(tag)}`} <span class="count">${links.length}</span></summary>
 <ul>
-${links.map(linkItem).join('\n')}
+${links.map(l => linkItem(l, icons)).join('\n')}
 </ul>
 </details>`;
 }
@@ -142,7 +155,7 @@ const NOTICES = {
 // their picture alongside. The way we solve this is rendering everything server-side
 // here; static/app.js opens the dialog and prefills it from the clicked item.
 // flow: main screen — GET / -> homePage() <-- HERE
-export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
+export function homePage({ username, doc, groups, notice = '', imgV = '', icons = new Map() }) {
   const name = (doc.info.name ?? '').trim() || username;
   const allTags = [...new Set(groups.map(([t]) => t))].filter(t => t !== 'untagged');
   const archived = doc.links.filter(l => l.done);
@@ -161,12 +174,12 @@ export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
 ${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
 <main>
   <section class="groups">
-${groups.map(tagGroup).join('\n')}
+${groups.map(g => tagGroup(g, icons)).join('\n')}
 ${groups.length === 0 ? '<p class="empty">Nothing pinned yet — pin your first link above.</p>' : ''}
 ${archived.length ? `<details class="tag archive" data-tag="archive">
 <summary>archive <span class="count">${archived.length}</span></summary>
 <ul>
-${archived.map(linkItem).join('\n')}
+${archived.map(l => linkItem(l, icons)).join('\n')}
 </ul>
 </details>` : ''}
   </section>
@@ -181,6 +194,12 @@ ${archived.map(linkItem).join('\n')}
     <input id="add-link" name="link" type="url" placeholder="https://…" required>
     <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">
     <input id="add-tags" name="tags" placeholder="tags (space or comma separated)">
+    <div id="pin-icon-row" hidden>
+      <img id="pin-icon" alt="" hidden><i id="pin-icon-none" class="icon"></i><span id="pin-icon-host"></span>
+      <button type="button" class="quiet" id="pin-icon-refetch">↻ refetch</button>
+      <button type="button" class="quiet danger" id="pin-icon-remove">✕ remove</button>
+      <input id="pin-icon-url" placeholder="…or paste an image URL" autocomplete="off">
+    </div>
     ${allTags.length ? `<div id="tag-picker">${allTags.map(t => `<button type="button" class="chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
     <div class="actions">
       <button type="button" class="quiet danger" id="pin-delete" hidden>✕ delete</button>

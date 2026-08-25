@@ -133,6 +133,7 @@
       form.elements.link.required = !file;
       form.elements.link.disabled = !!file;
       fileRow.hidden = !file;
+      showIconRow(editing && !file ? li : null);
       if (file) {
         const name = file.split('/').pop().replace(/^\d+-/, '');
         document.getElementById('pin-file-ext').textContent = (name.split('.').pop() ?? '').slice(0, 5).toUpperCase();
@@ -188,6 +189,64 @@
         if ((li.dataset.link || li.dataset.file) === key) li.remove();
       }
       dialog.close();
+    });
+
+    // The problem is the automatic site icon can be missing, stale, or blocked (a
+    // bot wall), and the user can often find the right image themselves. The way we
+    // solve this is an icon row on every edited link: refetch, remove, or paste an
+    // image URL; the answer is stamped onto every row for that host on the board.
+    // flow: edit dialog icon row -> POST /favicon -> paintIcon() <-- HERE
+    const iconRow = document.getElementById('pin-icon-row');
+    const iconImg = document.getElementById('pin-icon');
+    const iconNone = document.getElementById('pin-icon-none');
+    const iconUrlInput = document.getElementById('pin-icon-url');
+    let iconHost = '';
+    const iconSrc = (host, v) => `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}`;
+    const showIconRow = li => {
+      iconHost = li?.dataset.host ?? '';
+      iconRow.hidden = !iconHost;
+      iconUrlInput.value = '';
+      if (!iconHost) return;
+      document.getElementById('pin-icon-host').textContent = iconHost.replace(/^www\./, '');
+      paintIcon(iconHost, li.dataset.icon);
+    };
+    // one host, every row: the board, the dialog, and the review card (which reads the row)
+    const paintIcon = (host, v) => {
+      iconImg.hidden = !v;
+      iconNone.hidden = !!v;
+      if (v) iconImg.src = iconSrc(host, v);
+      for (const li of document.querySelectorAll(`li[data-host="${CSS.escape(host)}"]`)) {
+        li.dataset.icon = v;
+        const slot = li.querySelector('.icon');
+        const fresh = v ? Object.assign(document.createElement('img'), { className: 'icon', src: iconSrc(host, v), alt: '' }) : Object.assign(document.createElement('i'), { className: 'icon' });
+        slot ? slot.replaceWith(fresh) : li.prepend(fresh);
+      }
+    };
+    const editIcon = async (action, url = '') => {
+      if (!iconHost) return;
+      iconRow.classList.add('busy');
+      try {
+        const res = await fetch('/favicon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ host: iconHost, action, url }),
+        });
+        if (res.ok) paintIcon(iconHost, (await res.json()).v);
+      } catch { /* the row keeps showing what it had */ }
+      iconRow.classList.remove('busy');
+    };
+    document.getElementById('pin-icon-refetch').addEventListener('click', () => editIcon('refetch'));
+    document.getElementById('pin-icon-remove').addEventListener('click', () => editIcon('remove'));
+    // Enter in the URL field sets the icon without submitting the whole form
+    iconUrlInput.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const url = iconUrlInput.value.trim();
+      if (url) editIcon('set', url).then(() => { iconUrlInput.value = ''; });
+    });
+    iconUrlInput.addEventListener('change', () => {
+      const url = iconUrlInput.value.trim();
+      if (url) editIcon('set', url).then(() => { iconUrlInput.value = ''; });
     });
 
     // pinning claims the upload; closing without pinning deletes the orphan
@@ -399,20 +458,18 @@
       count.textContent = `${at + 1} / ${deck.length}`;
       card.hidden = false;
       under.hidden = !deck[at + 1];
-      const link = li.dataset.link;
       const a = li.querySelector('a');
       document.getElementById('review-title').textContent = a.textContent;
       const ext = li.querySelector('.ext');
       const extEl = document.getElementById('review-ext');
       extEl.hidden = !ext;
       extEl.textContent = ext ? ext.textContent : '';
-      let host = '';
-      try { host = link ? new URL(link).hostname : ''; } catch { /* file pin */ }
+      const host = li.dataset.host;
       document.getElementById('review-domain').textContent = host.replace(/^www\./, '');
-      // the site's icon, if the server has (or can get) one; hidden until it loads
+      // the row already knows whether its host has an icon (and which version)
       const icon = document.getElementById('review-icon');
       icon.hidden = true;
-      icon.src = host ? `/favicon/${encodeURIComponent(host)}` : '';
+      icon.src = li.dataset.icon ? `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(li.dataset.icon)}` : '';
       document.getElementById('review-age').textContent = age(li.dataset.added);
       document.getElementById('review-tags').replaceChildren(...li.dataset.tags.split(/,\s*/).filter(Boolean).map(t => {
         const s = document.createElement('span'); s.textContent = `#${t}`; return s;

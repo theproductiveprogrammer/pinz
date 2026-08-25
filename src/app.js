@@ -9,7 +9,7 @@ import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getD
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 import { webPicture, pictureVersion } from './image.js';
-import { siteIcon, validHost } from './favicon.js';
+import { siteIcon, editIcon, iconVersions, validHost } from './favicon.js';
 
 // The picture path comes from a hand-editable YAML, so it's only trusted once
 // resolved and proven to sit inside the data dir. Returns null for none/unsafe.
@@ -71,7 +71,7 @@ export function createApp() {
     const notice = ['dup', 'restored', 'missing'].find(n => n in req.query) ?? '';
     const local = localPicture(doc);
     const imgV = local ? await pictureVersion(local) : '';
-    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), notice, imgV }));
+    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), notice, imgV, icons: await iconVersions() }));
   }));
 
   // Shared by /add and /edit: the validated fields of the pin dialog.
@@ -215,11 +215,22 @@ export function createApp() {
     const file = await siteIcon(req.params.host);
     // a miss is cached a day too, so the card doesn't re-ask for icons that don't exist
     if (!file) { res.setHeader('Cache-Control', 'private, max-age=86400'); return res.status(404).end(); }
-    res.setHeader('Cache-Control', 'private, max-age=2592000');
+    // versioned URLs (from the page) change whenever the icon does: cache them for good
+    res.setHeader('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, max-age=2592000');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // an svg icon is a document if opened directly; sandboxed, it can't run anything
     if (file.endsWith('.svg')) res.setHeader('Content-Security-Policy', "sandbox; script-src 'none'");
     res.sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
+  }));
+
+  // flow: edit dialog icon row (refetch / set URL / remove) -> POST /favicon <-- HERE -> editIcon
+  app.post('/favicon', wrap(requireAuth), wrap(async (req, res) => {
+    const host = String(req.body?.host ?? '');
+    const action = String(req.body?.action ?? '');
+    if (!validHost(host) || !['refetch', 'set', 'remove'].includes(action)) return res.status(400).end();
+    const v = await editIcon(host, action, String(req.body?.url ?? ''));
+    if (v === null) return res.status(400).end();
+    res.json({ v });
   }));
 
   // flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle

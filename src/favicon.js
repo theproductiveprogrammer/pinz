@@ -65,6 +65,23 @@ async function declaredIcon(host) {
   } catch { return null; }
 }
 
+// The user said "no icon for this site": permanent until they refetch or set one.
+const offFile = host => path.join(dir(), `${host}.off`);
+
+// Downloads one candidate image into the cache; null if it isn't a usable image.
+async function download(host, url) {
+  try {
+    const res = await fetchWithin(url, 4000, { accept: 'image/*' });
+    const ext = TYPES[(res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()];
+    if (!res.ok || !ext) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > MAX_BYTES) return null;
+    const file = path.join(dir(), `${host}.${ext}`);
+    await fsp.writeFile(file, buf);
+    return file;
+  } catch { return null; }
+}
+
 // The problem is a review card shows a bare domain, and a site's icon is what makes
 // it recognisable at a glance. The way we solve this is fetching the icon once per
 // domain — the page's declared one, else /favicon.ico — into data/favicons/, and
@@ -76,21 +93,54 @@ export async function siteIcon(host) {
   host = host.toLowerCase();
   const hit = await cached(host);
   if (hit) return hit;
-  if (await recentMiss(host)) return null;
+  if (await recentMiss(host) || await fsp.access(offFile(host)).then(() => true, () => false)) return null;
   await fsp.mkdir(dir(), { recursive: true });
   const candidates = [await declaredIcon(host), `https://${host}/favicon.ico`].filter(Boolean);
   for (const url of candidates) {
-    try {
-      const res = await fetchWithin(url, 4000, { accept: 'image/*' });
-      const ext = TYPES[(res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()];
-      if (!res.ok || !ext) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (!buf.length || buf.length > MAX_BYTES) continue;
-      const file = path.join(dir(), `${host}.${ext}`);
-      await fsp.writeFile(file, buf);
-      return file;
-    } catch { /* try the next candidate */ }
+    const file = await download(host, url);
+    if (file) return file;
   }
   await fsp.writeFile(missFile(host), '');
   return null;
+}
+
+// Forget everything cached about a host: icon, miss marker, and "off" marker.
+async function clearIcon(host) {
+  for (const ext of [...EXTS, 'none', 'off']) await fsp.rm(path.join(dir(), `${host}.${ext}`), { force: true });
+}
+
+// The problem is the automatic fetch can be wrong or blocked (a bot wall, a stale
+// icon), and some sites the user simply wants blank. The way we solve this is three
+// explicit verbs from the edit dialog: refetch from scratch, set from an image URL
+// the user found, or remove (and stop trying). Returns the new version, '' if none.
+// flow: edit dialog icon row -> POST /favicon -> editIcon() <-- HERE
+export async function editIcon(host, action, url) {
+  if (!validHost(host)) return null;
+  host = host.toLowerCase();
+  await fsp.mkdir(dir(), { recursive: true });
+  await clearIcon(host);
+  let file = null;
+  if (action === 'refetch') file = await siteIcon(host);
+  else if (action === 'set') { try { file = await download(host, new URL(url).href); } catch { file = null; } }
+  else if (action === 'remove') await fsp.writeFile(offFile(host), '');
+  else return null;
+  return file ? versionOf(await fsp.stat(file)) : '';
+}
+
+const versionOf = st => Math.round(st.mtimeMs).toString(36);
+
+// The problem is icon URLs are cached by the browser for a month, so a replaced icon
+// would never show — and the page shouldn't probe for icons that don't exist. The way
+// we solve this is one directory read per page render: host → version (file mtime),
+// stamped into each link's URL and data attributes.
+// flow: GET / -> homepage handler -> iconVersions() <-- HERE -> homePage
+export async function iconVersions() {
+  const map = new Map();
+  for (const name of await fsp.readdir(dir()).catch(() => [])) {
+    const i = name.lastIndexOf('.');
+    if (i < 1 || !EXTS.has(name.slice(i + 1))) continue;
+    const st = await fsp.stat(path.join(dir(), name)).catch(() => null);
+    if (st) map.set(name.slice(0, i), versionOf(st));
+  }
+  return map;
 }

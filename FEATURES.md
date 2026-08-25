@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-58 flows indexed.
+64 flows indexed.
 
 ## .
 
@@ -66,9 +66,11 @@ means a function missing its flow line.
 - (module) — src/app.js:212
   - flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
   - problem: a site icon is shared by every link on that domain and never changes in practice.
-- (module) — src/app.js:225
+- (module) — src/app.js:226
+  - flow: edit dialog icon row (refetch / set URL / remove) -> POST /favicon <-- HERE -> editIcon
+- (module) — src/app.js:236
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:234
+- (module) — src/app.js:245
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -82,6 +84,18 @@ means a function missing its flow line.
   - problem: turning a correct password into a browser session, giving nothing away on failure.
 - `handleLogout` — src/auth.js:106
   - flow: header log-out button -> POST /logout -> handleLogout() <-- HERE
+- `siteIcon` — src/favicon.js:91
+  - flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host -> siteIcon() <-- HERE
+  - problem: a review card shows a bare domain, and a site's icon is what makes it recognisable at a glance.
+- `siteIcon` — src/favicon.js:91
+  - flow: pin dialog -> POST /add -> siteIcon() (prefetch, not awaited) <-- HERE
+  - problem: a review card shows a bare domain, and a site's icon is what makes it recognisable at a glance.
+- `editIcon` — src/favicon.js:117
+  - flow: edit dialog icon row -> POST /favicon -> editIcon() <-- HERE
+  - problem: the automatic fetch can be wrong or blocked (a bot wall, a stale icon), and some sites the user simply wants blank.
+- `iconVersions` — src/favicon.js:137
+  - flow: GET / -> homepage handler -> iconVersions() <-- HERE -> homePage
+  - problem: icon URLs are cached by the browser for a month, so a replaced icon would never show — and the page shouldn't probe for icons that don't exist.
 - `webPicture` — src/image.js:15
   - flow: main screen <img src="/img?v=…"> -> GET /img -> webPicture() <-- HERE
   - problem: uploaded pictures are phone-sized originals (0.3–2.3 MB) and, over a long-haul link, they alone cost seconds.
@@ -95,7 +109,7 @@ means a function missing its flow line.
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:83
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:145
+- `homePage` — src/render.js:158
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -151,25 +165,28 @@ means a function missing its flow line.
 - `dialog` — static/app.js:76
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
-- (module) — static/app.js:181
+- (module) — static/app.js:182
   - flow: edit dialog -> "✕ delete" -> POST /delete
   - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
-- (module) — static/app.js:200
+- `iconRow` — static/app.js:199
+  - flow: edit dialog icon row -> POST /favicon -> paintIcon() <-- HERE
+  - problem: the automatic site icon can be missing, stale, or blocked (a bot wall), and the user can often find the right image themselves.
+- (module) — static/app.js:259
   - flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
   - problem: a save from inside review mode must not reload the page — that would throw the deck away.
-- `addEventListener` — static/app.js:242
+- `addEventListener` — static/app.js:301
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- (module) — static/app.js:267
+- (module) — static/app.js:326
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
-- `applyPage` — static/app.js:318
+- `applyPage` — static/app.js:377
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
-- `review` — static/app.js:350
+- `review` — static/app.js:409
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:465
+- `editBtn` — static/app.js:522
   - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
   - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51

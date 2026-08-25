@@ -165,6 +165,10 @@ details.tag li { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.1
 /* display:flex above would defeat the hidden attribute the search filter sets */
 details.tag li[hidden] { display: none; }
 details.tag li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* site icons: a fixed slot per row, desaturated so they read as ink, not colour */
+.icon { width: 14px; height: 14px; flex: none; align-self: center; object-fit: contain; filter: grayscale(1); opacity: 0.7; }
+i.icon { display: inline-block; }
+li:hover .icon { filter: none; opacity: 1; }
 /* file pins wear their extension as a small chip */
 .ext {
   font-family: var(--display);
@@ -243,6 +247,15 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 #pin-submit:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 #pin-done:hover, #pin-restore:hover { color: var(--accent); }
 #pin-file-row { margin: 0; display: flex; align-items: baseline; gap: 0.5rem; }
+#pin-file-row[hidden] { display: none; }
+#pin-icon-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+#pin-icon-row[hidden] { display: none; }
+#pin-icon { width: 16px; height: 16px; object-fit: contain; }
+#pin-icon[hidden] { display: none; }
+#pin-icon-none { width: 16px; height: 16px; border: 1px dashed var(--line); opacity: 1; filter: none; }
+#pin-icon-none[hidden] { display: none; }
+#pin-icon-url { flex: 1 1 100%; font-size: 0.85rem; padding: 0.35rem 0.6rem; }
+#pin-icon-row.busy { opacity: 0.5; pointer-events: none; }
 #pin-file-row a { margin-left: auto; }
 .danger:hover { color: var(--error) !important; }
 #pin-delete { margin-right: auto; }
