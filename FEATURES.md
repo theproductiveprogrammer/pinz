@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-49 flows indexed.
+54 flows indexed.
 
 ## .
 
@@ -16,17 +16,19 @@ means a function missing its flow line.
 
 ## bin
 
-- `cmdUserAdd` — bin/pinz-admin.js:59
+- `cmdUserAdd` — bin/pinz-admin.js:62
   - flow: terminal — admin runs `pinz-admin user add <name>` to create an account <-- HERE
-- `cmdUserPasswd` — bin/pinz-admin.js:72
+- `cmdUserPasswd` — bin/pinz-admin.js:75
   - flow: terminal — `pinz-admin user passwd <name>` <-- HERE
-- `cmdUserList` — bin/pinz-admin.js:82
+- `cmdUserList` — bin/pinz-admin.js:85
   - flow: terminal — `pinz-admin user list` <-- HERE
-- `cmdUserRm` — bin/pinz-admin.js:89
+- `cmdUserRm` — bin/pinz-admin.js:92
   - flow: terminal — `pinz-admin user rm <name>` <-- HERE
-- `cmdImageSet` — bin/pinz-admin.js:98
+- `cmdImageSet` — bin/pinz-admin.js:101
   - flow: terminal — `pinz-admin image set <name> <file>` <-- HERE
-- `cmdImagePosition` — bin/pinz-admin.js:110
+- `cmdImageOptimize` — bin/pinz-admin.js:114
+  - flow: terminal — `pinz-admin image optimize [name]` shrinks stored pictures <-- HERE
+- `cmdImagePosition` — bin/pinz-admin.js:130
   - flow: terminal — `pinz-admin image position <name> "50% 20% [64px 64px]"` <-- HERE
 
 ## chrome-tab-extension
@@ -77,6 +79,15 @@ means a function missing its flow line.
   - problem: turning a correct password into a browser session, giving nothing away on failure.
 - `handleLogout` — src/auth.js:106
   - flow: header log-out button -> POST /logout -> handleLogout() <-- HERE
+- `webPicture` — src/image.js:15
+  - flow: main screen <img src="/img?v=…"> -> GET /img -> webPicture() <-- HERE
+  - problem: uploaded pictures are phone-sized originals (0.3–2.3 MB) and, over a long-haul link, they alone cost seconds.
+- `optimizePicture` — src/image.js:37
+  - flow: terminal `pinz-admin image optimize|set` -> optimizePicture() <-- HERE -> webPicture
+  - problem: uploaded originals (up to several MB each) sit on disk for no reason once nothing serves them at full size.
+- `pictureVersion` — src/image.js:56
+  - flow: GET / -> homepage handler -> pictureVersion() <-- HERE -> homePage
+  - problem: a picture cached for a year would never update when replaced.
 - `loginPage` — src/render.js:69
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:83
@@ -149,6 +160,9 @@ means a function missing its flow line.
 - `if` — static/app.js:282
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
+- `pageResponse` — static/sw.js:51
+  - flow: new tab -> GET / -> sw fetch handler -> pageResponse() <-- HERE -> app.js refresh
+  - problem: the page must feel instant from anywhere, but must also be right.
 
 ## Self-audit
 

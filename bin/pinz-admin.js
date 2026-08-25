@@ -6,9 +6,12 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import {
-  setDataDir, getDataDir, loadUsers, findUser, validUsername,
+  setDataDir, getDataDir, loadUsers, findUser, loadUserDoc, validUsername,
   mutateUsers, mutateUserDoc,
 } from '../src/store.js';
+import { optimizePicture } from '../src/image.js';
+
+const kb = n => `${Math.round(n / 1024)} KB`;
 
 function die(msg) { console.error(`pinz-admin: ${msg}`); process.exit(1); }
 
@@ -103,7 +106,24 @@ async function cmdImageSet(username, file) {
   const rel = path.join('images', username + ext);
   await fsp.copyFile(file, path.join(getDataDir(), rel));
   await mutateUserDoc(username, doc => { doc.info.picture = rel; });
-  console.log(`picture set: ${rel}`);
+  const r = await optimizePicture(path.join(getDataDir(), rel));
+  console.log(`picture set: ${rel} (${kb(r.before)} → ${kb(r.after)} stored, ${kb(r.web)} served)`);
+}
+
+// flow: terminal — `pinz-admin image optimize [name]` shrinks stored pictures <-- HERE
+async function cmdImageOptimize(username) {
+  const users = username ? [await findUser(username) ?? die(`no such user "${username}"`)] : await loadUsers();
+  for (const u of users) {
+    const doc = await loadUserDoc(u.username).catch(() => null);
+    const pic = String(doc?.info?.picture ?? '');
+    if (!pic || /^https?:\/\//.test(pic)) continue;
+    const file = path.resolve(getDataDir(), pic);
+    if (!file.startsWith(getDataDir() + path.sep)) continue;
+    try {
+      const r = await optimizePicture(file);
+      console.log(`${u.username}\t${kb(r.before)} → ${kb(r.after)} stored, ${kb(r.web)} served`);
+    } catch (e) { console.log(`${u.username}\tskipped: ${e.message}`); }
+  }
 }
 
 // flow: terminal — `pinz-admin image position <name> "50% 20% [64px 64px]"` <-- HERE
@@ -125,8 +145,9 @@ function usage() {
   user passwd <username>         change a password (prompts)
   user list                      list accounts
   user rm <username>             remove an account (data file kept)
-  image set <username> <file>    copy an image into data/ and use it
-  image position <username> "<x y [w h]>"   place (and size) the image, e.g. "50% 20% 64px 64px"`);
+  image set <username> <file>    copy an image into data/ (shrunk to ≤2000px) and use it
+  image position <username> "<x y [w h]>"   place (and size) the image, e.g. "50% 20% 64px 64px"
+  image optimize [username]      shrink stored pictures in place (.bak kept) and prebuild web copies`);
   process.exit(2);
 }
 
@@ -141,6 +162,7 @@ const commands = {
   'user rm': cmdUserRm,
   'image set': cmdImageSet,
   'image position': cmdImagePosition,
+  'image optimize': cmdImageOptimize,
 };
 const cmd = commands[argv.slice(0, 2).join(' ')];
 if (!cmd) usage();

@@ -25,6 +25,30 @@ export async function webPicture(source) {
   return out;
 }
 
+// Originals are kept at most this wide — twice the served size, so a future
+// re-derive still has headroom, while a phone photo drops from megabytes to ~200 KB.
+const MAX_ORIGINAL = 2000;
+
+// The problem is uploaded originals (up to several MB each) sit on disk for no reason
+// once nothing serves them at full size. The way we solve this is shrinking the
+// original in place to ≤2000px — same format, prior file kept as .bak — then building
+// the web derivative so the first viewer never waits on it. Returns byte sizes.
+// flow: terminal `pinz-admin image optimize|set` -> optimizePicture() <-- HERE -> webPicture
+export async function optimizePicture(source) {
+  const before = (await fsp.stat(source)).size;
+  const meta = await sharp(source).metadata();
+  // EXIF-rotated width is what the viewer sees; a portrait phone shot reports landscape
+  const width = (meta.orientation ?? 1) >= 5 ? meta.height : meta.width;
+  if (width > MAX_ORIGINAL) {
+    const tmp = `${source}.${process.pid}.tmp`;
+    await sharp(source).rotate().resize({ width: MAX_ORIGINAL }).toFile(tmp);
+    await fsp.copyFile(source, `${source}.bak`);
+    await fsp.rename(tmp, source);
+  }
+  const web = await webPicture(source);
+  return { before, after: (await fsp.stat(source)).size, web: (await fsp.stat(web)).size };
+}
+
 // The problem is a picture cached for a year would never update when replaced. The
 // way we solve this is putting the original's mtime in the URL — a new upload is a
 // new URL, an unchanged one stays in the browser cache forever.
