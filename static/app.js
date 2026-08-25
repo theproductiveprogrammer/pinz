@@ -76,6 +76,9 @@
   const dialog = document.getElementById('pin-dialog');
   // assigned below; review mode (further down) hands its card to the same dialog
   let openDialog = () => {};
+  // true while the edit dialog is open on behalf of review mode: saves and deletes
+  // then update the page in place instead of reloading, so the deck can carry on
+  let reviewPaused = false;
   const form = document.getElementById('pin-form');
   if (dialog && form) {
     const heading = document.getElementById('pin-heading');
@@ -172,11 +175,31 @@
       const key = form.elements.file.value || form.elements.orig.value;
       if (!key || !confirm('Delete this pin forever?')) return;
       await removePin(key).catch(() => {});
-      location.reload();
+      if (!reviewPaused) return location.reload();
+      for (const li of document.querySelectorAll('details.tag li')) {
+        if ((li.dataset.link || li.dataset.file) === key) li.remove();
+      }
+      dialog.close();
     });
 
     // pinning claims the upload; closing without pinning deletes the orphan
     form.addEventListener('submit', () => { orphanFile = ''; });
+
+    // The problem is a save from inside review mode must not reload the page — that
+    // would throw the deck away. The way we solve this is posting the form ourselves,
+    // letting the server's redirect hand back the fresh page, and swapping the list
+    // in place before the dialog closes and the deck resumes.
+    // flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
+    form.addEventListener('submit', async e => {
+      if (!reviewPaused) return;
+      e.preventDefault();
+      try {
+        // getAttribute: the form's buttons are named "action", which shadows form.action
+        const res = await fetch(form.getAttribute('action'), { method: 'POST', body: new URLSearchParams(new FormData(form, e.submitter)) });
+        if (res.ok) applyPage(await res.text());
+      } catch { /* the next review pass shows the truth */ }
+      dialog.close();
+    });
     dialog.addEventListener('close', () => {
       if (orphanFile) { removePin(orphanFile).catch(() => {}); orphanFile = ''; }
     });
@@ -281,21 +304,28 @@
   // the real page behind it; when that differs, the list is swapped in place here —
   // keeping open groups, the search, and the dialog exactly as the user has them.
   // flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
+  // Swap this page's list (and the dialog's tag chips) for a freshly rendered copy,
+  // keeping open groups and the search filter. Shared by the service-worker refresh
+  // below and by saves made from inside review mode.
+  function applyPage(html) {
+    const next = new DOMParser().parseFromString(html, 'text/html');
+    const open = new Set(groups.filter(d => d.open).map(d => d.dataset.tag));
+    document.querySelector('main').replaceWith(next.querySelector('main'));
+    const oldPicker = document.getElementById('tag-picker');
+    const newPicker = next.getElementById('tag-picker');
+    if (oldPicker && newPicker) oldPicker.replaceWith(newPicker);
+    else if (oldPicker) oldPicker.remove();
+    else if (newPicker && form) form.elements.tags.insertAdjacentElement('afterend', newPicker);
+    groups = [...document.querySelectorAll('details.tag')];
+    for (const d of groups) d.open = open.has(d.dataset.tag);
+    filter();
+  }
+
   if ('serviceWorker' in navigator && dialog) {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* plain network loads still work */ });
     const refresh = html => {
       if (document.querySelector('dialog[open]')) return; // never pull the page out from under an open dialog
-      const next = new DOMParser().parseFromString(html, 'text/html');
-      const open = new Set(groups.filter(d => d.open).map(d => d.dataset.tag));
-      document.querySelector('main').replaceWith(next.querySelector('main'));
-      const oldPicker = document.getElementById('tag-picker');
-      const newPicker = next.getElementById('tag-picker');
-      if (oldPicker && newPicker) oldPicker.replaceWith(newPicker);
-      else if (oldPicker) oldPicker.remove();
-      else if (newPicker && form) form.elements.tags.insertAdjacentElement('afterend', newPicker);
-      groups = [...document.querySelectorAll('details.tag')];
-      for (const d of groups) d.open = open.has(d.dataset.tag);
-      filter();
+      applyPage(html);
     };
     navigator.serviceWorker.addEventListener('message', e => {
       if (e.data?.type === 'refresh') refresh(e.data.html);
@@ -322,21 +352,25 @@
     let at = 0;
     let opened = 0;
 
+    // The deck holds keys (URL or stored path), not rows: an edit re-renders the
+    // list, and the card must find the link's fresh row — or notice it's gone.
+    const liFor = key => document.querySelector(
+      `details.tag:not(.archive) li[data-link="${CSS.escape(key)}"], details.tag:not(.archive) li[data-file="${CSS.escape(key)}"]`);
+
     // Every active link once (a link under two tags is listed twice), in random order.
     const buildDeck = () => {
-      const seen = new Set();
-      const items = [];
-      for (const li of document.querySelectorAll('details.tag:not(.archive) li')) {
-        const key = li.dataset.link || li.dataset.file;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        items.push(li);
-      }
-      for (let i = items.length - 1; i > 0; i--) {
+      const keys = [...new Set([...document.querySelectorAll('details.tag:not(.archive) li')].map(li => li.dataset.link || li.dataset.file))];
+      for (let i = keys.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [items[i], items[j]] = [items[j], items[i]];
+        [keys[i], keys[j]] = [keys[j], keys[i]];
       }
-      return items;
+      return keys;
+    };
+
+    // The current card's row, skipping any link that was archived or deleted mid-review.
+    const current = () => {
+      while (at < deck.length && !liFor(deck[at])) deck.splice(at, 1);
+      return at < deck.length ? liFor(deck[at]) : null;
     };
 
     const age = iso => {
@@ -353,7 +387,7 @@
       card.style.transform = '';
       hintPass.classList.remove('lit');
       hintOpen.classList.remove('lit');
-      const li = deck[at];
+      const li = current();
       count.textContent = li ? `${at + 1} / ${deck.length}` : `${deck.length} / ${deck.length}`;
       card.hidden = !li;
       document.getElementById('review-edit').hidden = !li;
@@ -379,7 +413,7 @@
     // Understand: window.open must run synchronously inside the user's gesture
     // (key or pointerup) or the browser treats it as a popup and blocks it.
     const verdict = open => {
-      const li = deck[at];
+      const li = current();
       if (!li) return;
       if (open) { window.open(li.querySelector('a').href, '_blank'); opened++; }
       card.classList.remove('dragging');
@@ -388,13 +422,9 @@
       setTimeout(showCard, 160);
     };
 
-    // Set when review stepped aside for the edit dialog: the next "review" click
-    // picks the deck up at the same card instead of reshuffling.
-    let paused = false;
-
     const startReview = () => {
-      if (!paused) { deck = buildDeck(); at = 0; opened = 0; }
-      paused = false;
+      if (!reviewPaused) { deck = buildDeck(); at = 0; opened = 0; }
+      reviewPaused = false;
       showCard();
       review.showModal();
       card.focus();
@@ -410,20 +440,22 @@
     });
     document.getElementById('review-close').addEventListener('click', () => review.close());
 
-    // The problem is a card sometimes needs fixing (retag, retitle, delete) right
-    // there, and the edit dialog already does all of that. The way we solve this is
-    // handing the card's row to the existing dialog — a save reloads the page, a
-    // cancel leaves the deck paused so "review" resumes it.
-    // flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> POST /edit
+    // The problem is a card sometimes needs fixing (retag, retitle, archive, delete)
+    // right there, and the edit dialog already does all of that. The way we solve
+    // this is handing the card's row to the existing dialog and, however it closes
+    // (cancel, save, archive, delete), reopening the deck where it was — a link that
+    // left the board is simply skipped.
+    // flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
     const editBtn = document.getElementById('review-edit');
     const editCurrent = () => {
-      const li = deck[at];
+      const li = current();
       if (!li) return;
-      paused = true;
+      reviewPaused = true;
       review.close();
       openDialog(li);
     };
     editBtn.addEventListener('click', editCurrent);
+    dialog.addEventListener('close', () => { if (reviewPaused) startReview(); });
     review.addEventListener('keydown', e => {
       if (e.key === 'ArrowRight') { e.preventDefault(); verdict(true); }
       if (e.key === 'ArrowLeft') { e.preventDefault(); verdict(false); }
@@ -433,7 +465,7 @@
     // Swipe: the card follows the finger; past a third of its width (or a quick
     // flick) the release is the verdict, otherwise it springs back.
     card.addEventListener('pointerdown', e => {
-      if (!deck[at]) return;
+      if (!current()) return;
       e.preventDefault();
       card.setPointerCapture(e.pointerId);
       card.classList.add('dragging');

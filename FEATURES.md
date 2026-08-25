@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-56 flows indexed.
+57 flows indexed.
 
 ## .
 
@@ -148,24 +148,27 @@ means a function missing its flow line.
 - `dialog` — static/app.js:76
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
-- (module) — static/app.js:170
+- (module) — static/app.js:173
   - flow: edit dialog -> "✕ delete" -> POST /delete
   - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
-- `addEventListener` — static/app.js:211
+- (module) — static/app.js:192
+  - flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
+  - problem: a save from inside review mode must not reload the page — that would throw the deck away.
+- `addEventListener` — static/app.js:234
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- (module) — static/app.js:236
+- (module) — static/app.js:259
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
-- `if` — static/app.js:284
+- `applyPage` — static/app.js:310
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
-- `review` — static/app.js:312
+- `review` — static/app.js:342
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:418
-  - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> POST /edit
-  - problem: a card sometimes needs fixing (retag, retitle, delete) right there, and the edit dialog already does all of that.
+- `editBtn` — static/app.js:449
+  - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
+  - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51
   - flow: new tab -> GET / -> sw fetch handler -> pageResponse() <-- HERE -> app.js refresh
   - problem: the page must feel instant from anywhere, but must also be right.
