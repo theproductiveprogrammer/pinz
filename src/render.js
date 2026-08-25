@@ -1,10 +1,33 @@
 // render.js — HTML pages built from template literals; every interpolation escaped.
 
-// The problem is /static ships with an hour of browser cache, so a deploy could
-// leave users on stale CSS/JS mismatched with fresh HTML. The way we solve this is
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The problem is /static ships with a year of browser cache, so a deploy could
+// leave users on stale assets mismatched with fresh HTML. The way we solve this is
 // stamping asset URLs with the server's boot time — every restart (deploys restart
 // the service) is a new URL, and unchanged assets stay cached between deploys.
 const ASSET_V = Date.now().toString(36);
+
+const STATIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '../static');
+const DEV = process.env.NODE_ENV !== 'production';
+
+// The problem is a separate stylesheet is a render-blocking round trip, and from far
+// away one round trip is a quarter second. The way we solve this is inlining the CSS
+// and the (small) JS straight into every page: one request paints a working screen.
+// In production they're read once at boot; in dev on every request so edits show.
+const assets = {};
+function inlineAsset(name) {
+  if (DEV || !assets[name]) {
+    assets[name] = fs.readFileSync(path.join(STATIC, name), 'utf8')
+      // the font URL lives in the CSS; version it like every other static URL
+      .replace(/url\("\/static\/([^"?]+)"\)/g, `url("/static/$1?v=${ASSET_V}")`)
+      // a literal </script> or </style> in the source would end the inline block early
+      .replace(/<\//g, '<\\/');
+  }
+  return assets[name];
+}
 
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -31,13 +54,13 @@ function page(title, body) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="preload" href="/static/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/style.css?v=${ASSET_V}">
+<link rel="preload" href="/static/fonts/space-grotesk.woff2?v=${ASSET_V}" as="font" type="font/woff2" crossorigin>
+<style>${inlineAsset('style.css')}</style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📌</text></svg>">
 </head>
 <body>
 ${body}
-<script src="/static/app.js?v=${ASSET_V}" defer></script>
+<script>${inlineAsset('app.js')}</script>
 </body>
 </html>`;
 }
@@ -119,7 +142,7 @@ const NOTICES = {
 // their picture alongside. The way we solve this is rendering everything server-side
 // here; static/app.js opens the dialog and prefills it from the clicked item.
 // flow: main screen — GET / -> homePage() <-- HERE
-export function homePage({ username, doc, groups, notice = '' }) {
+export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
   const name = (doc.info.name ?? '').trim() || username;
   const allTags = [...new Set(groups.map(([t]) => t))].filter(t => t !== 'untagged');
   const archived = doc.links.filter(l => l.done);
@@ -147,7 +170,7 @@ ${archived.map(linkItem).join('\n')}
 </ul>
 </details>` : ''}
   </section>
-  ${doc.info.picture ? `<figure class="photo" style="${escapeHtml(photoStyle(doc.info.picture_position))}"><img src="/img" alt=""></figure>` : ''}
+  ${doc.info.picture ? `<figure class="photo" style="${escapeHtml(photoStyle(doc.info.picture_position))}"><img src="/img${imgV ? `?v=${escapeHtml(imgV)}` : ''}" alt=""></figure>` : ''}
 </main>
 <dialog id="pin-dialog">
   <form method="post" action="/add" id="pin-form">

@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-47 flows indexed.
+49 flows indexed.
 
 ## .
 
@@ -36,32 +36,34 @@ means a function missing its flow line.
 
 ## src
 
-- `createApp` — src/app.js:35
+- `createApp` — src/app.js:45
   - flow: server start — server.js -> createApp() <-- HERE
-- (module) — src/app.js:47
+- (module) — src/app.js:55
+  - flow: main screen loads -> static/app.js registers -> GET /sw.js <-- HERE
+- (module) — src/app.js:67
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:66
+- (module) — src/app.js:88
   - flow: pin dialog (new link or uploaded file) -> POST /add <-- HERE -> addLink | addFilePin
-- (module) — src/app.js:87
+- (module) — src/app.js:109
   - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
   - problem: fixing a pin's fields and completing/restoring it are one dialog to the user.
-- (module) — src/app.js:107
+- (module) — src/app.js:129
   - flow: file dropped on the page -> static/app.js -> POST /upload <-- HERE -> pin dialog
   - problem: dropped documents need somewhere to live before they're pinned.
-- (module) — src/app.js:122
+- (module) — src/app.js:144
   - flow: file pin clicked -> GET /file/* <-- HERE
   - problem: pinned documents are as private as the bookmarks.
-- (module) — src/app.js:140
+- (module) — src/app.js:162
   - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete <-- HERE -> deletePin
-- (module) — src/app.js:154
+- (module) — src/app.js:176
   - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
   - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
-- (module) — src/app.js:166
-  - flow: main screen <img src="/img"> -> GET /img <-- HERE
-  - problem: the profile picture lives under data/, which is private.
-- (module) — src/app.js:177
+- (module) — src/app.js:189
+  - flow: main screen <img src="/img?v=…"> -> GET /img <-- HERE -> webPicture
+  - problem: the profile picture lives under data/, which is private, and the original is far too big to ship.
+- (module) — src/app.js:205
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:186
+- (module) — src/app.js:214
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -75,11 +77,11 @@ means a function missing its flow line.
   - problem: turning a correct password into a browser session, giving nothing away on failure.
 - `handleLogout` — src/auth.js:106
   - flow: header log-out button -> POST /logout -> handleLogout() <-- HERE
-- `loginPage` — src/render.js:46
+- `loginPage` — src/render.js:69
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
-- `errorPage` — src/render.js:60
+- `errorPage` — src/render.js:83
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:122
+- `homePage` — src/render.js:145
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -129,21 +131,24 @@ means a function missing its flow line.
 
 ## static
 
-- `filter` — static/app.js:39
+- (module) — static/app.js:39
   - flow: main screen search box — user types (or presses /) -> filter() <-- HERE
   - problem: finding one link among many without leaving the page.
-- `dialog` — static/app.js:75
+- `dialog` — static/app.js:76
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
-- (module) — static/app.js:167
+- (module) — static/app.js:168
   - flow: edit dialog -> "✕ delete" -> POST /delete
   - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
-- `addEventListener` — static/app.js:208
+- `addEventListener` — static/app.js:209
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- `photo` — static/app.js:234
+- (module) — static/app.js:234
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
+- `if` — static/app.js:282
+  - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
+  - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
 
 ## Self-audit
 

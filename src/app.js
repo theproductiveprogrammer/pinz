@@ -8,6 +8,16 @@ import fsp from 'node:fs/promises';
 import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
+import { webPicture, pictureVersion } from './image.js';
+
+// The picture path comes from a hand-editable YAML, so it's only trusted once
+// resolved and proven to sit inside the data dir. Returns null for none/unsafe.
+function localPicture(doc) {
+  const pic = String(doc.info.picture ?? '');
+  if (!pic || /^https?:\/\//.test(pic)) return null;
+  const file = path.resolve(getDataDir(), pic);
+  return file.startsWith(getDataDir() + path.sep) ? file : null;
+}
 
 // Express 4 doesn't catch async handler rejections; route everything through here.
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -36,7 +46,17 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use('/static', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '../static'), { maxAge: '1h' }));
+  const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../static');
+  // Every /static URL carries ?v=<boot time> (see render.js), so what's cached can never
+  // go stale — let the browser keep it for a year and skip even the revalidation trip.
+  app.use('/static', express.static(staticDir, { maxAge: '1y', immutable: true }));
+  // The service worker must be served from the root to control "/" — and never cached,
+  // so a deploy's new worker is picked up on the next visit.
+  // flow: main screen loads -> static/app.js registers -> GET /sw.js <-- HERE
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(staticDir, 'sw.js'));
+  });
   app.use(express.urlencoded({ extended: false }));
 
   app.get('/login', (req, res) => res.send(loginPage()));
@@ -48,7 +68,9 @@ export function createApp() {
   app.get('/', wrap(requireAuth), wrap(async (req, res) => {
     const doc = await loadUserDoc(req.user);
     const notice = ['dup', 'restored', 'missing'].find(n => n in req.query) ?? '';
-    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), notice }));
+    const local = localPicture(doc);
+    const imgV = local ? await pictureVersion(local) : '';
+    res.send(homePage({ username: req.user, doc, groups: groupByTag(doc), notice, imgV }));
   }));
 
   // Shared by /add and /edit: the validated fields of the pin dialog.
@@ -160,20 +182,24 @@ export function createApp() {
     res.status(204).end();
   }));
 
-  // The problem is the profile picture lives under data/, which is private. The way we
-  // solve this is streaming only the logged-in user's own picture, from a path that
-  // comes exclusively from their YAML and is confined to the data dir.
-  // flow: main screen <img src="/img"> -> GET /img <-- HERE
+  // The problem is the profile picture lives under data/, which is private, and the
+  // original is far too big to ship. The way we solve this is streaming only the
+  // logged-in user's own picture, as its resized webp derivative, and — when the page
+  // asked for it by version — telling the browser to keep it for a year.
+  // flow: main screen <img src="/img?v=…"> -> GET /img <-- HERE -> webPicture
   app.get('/img', wrap(requireAuth), wrap(async (req, res) => {
     const doc = await loadUserDoc(req.user);
     const pic = String(doc.info.picture ?? '');
     if (!pic) return res.status(404).end();
     if (/^https?:\/\//.test(pic)) return res.redirect(pic);
-    const file = path.resolve(getDataDir(), pic);
-    if (!file.startsWith(getDataDir() + path.sep)) return res.status(400).end();
-    // the heaviest asset on the page, refetched every new tab without this
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    res.sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
+    const file = localPicture(doc);
+    if (!file) return res.status(400).end();
+    let out;
+    try { out = await webPicture(file); }
+    catch (e) { console.error('picture derivative failed, serving original:', e.message); out = file; }
+    // versioned URLs change when the picture does, so they can be cached forever
+    res.setHeader('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, max-age=3600');
+    res.sendFile(out, err => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
   // flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle

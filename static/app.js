@@ -20,7 +20,7 @@
     setInterval(tick, 1000);
   }
 
-  const groups = [...document.querySelectorAll('details.tag')];
+  let groups = [...document.querySelectorAll('details.tag')];
 
   // Every load starts clean: nothing remembers which groups were open (and old
   // remembered state from earlier versions is wiped).
@@ -33,10 +33,11 @@
   // links, force-open groups with hits, hide groups without any. Open state from
   // before the search is snapshotted and put back when the search clears.
   const box = document.getElementById('search');
+  let filter = () => {};
   if (box) {
     let preSearch = null;
     // flow: main screen search box — user types (or presses /) -> filter() <-- HERE
-    const filter = () => {
+    filter = () => {
       const q = box.value.trim().toLowerCase();
       if (q && !preSearch) preSearch = new Map(groups.map(d => [d.dataset.tag, d.open]));
       for (const d of groups) {
@@ -231,43 +232,72 @@
   // back to the YAML in PAGE coordinates (X as % of page width, Y as px from the
   // top of the document) so the photo scrolls with the content it's pinned beside.
   // flow: main screen — user drags the photo or its corner -> POST /image-position
-  const photo = document.querySelector('.photo');
-  if (photo) {
-    photo.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      photo.setPointerCapture(e.pointerId);
-      const r0 = photo.getBoundingClientRect();
-      // page-coordinate center — fixed during resize, follows the cursor on move
-      const cx0 = r0.left + r0.width / 2 + scrollX;
-      const cy0 = r0.top + r0.height / 2 + scrollY;
-      const resizing = e.clientX > r0.right - 18 && e.clientY > r0.bottom - 18;
-      const dx = cx0 - e.pageX;
-      const dy = cy0 - e.pageY;
-      if (!resizing) photo.classList.add('dragging');
-      const onMove = ev => {
-        if (resizing) {
-          // width only — height follows the image's natural aspect ratio
-          photo.style.width = `${Math.max(32, Math.round((ev.pageX - cx0) * 2))}px`;
-        } else {
-          photo.style.left = `${Math.round(ev.pageX + dx)}px`;
-          photo.style.top = `${Math.round(ev.pageY + dy)}px`;
-        }
-      };
-      const up = () => {
-        photo.removeEventListener('pointermove', onMove);
-        photo.classList.remove('dragging');
-        const r = photo.getBoundingClientRect();
-        const cx = r.left + r.width / 2 + scrollX;
-        const cy = r.top + r.height / 2 + scrollY;
-        const pos = `${(cx / innerWidth * 100).toFixed(1)}% ${Math.round(cy)}px ${Math.round(r.width)}px`;
-        fetch('/image-position', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `pos=${encodeURIComponent(pos)}`,
-        }).catch(() => { /* position still applies until reload */ });
-      };
-      photo.addEventListener('pointermove', onMove);
-      photo.addEventListener('pointerup', up, { once: true });
+  // Delegated from the document: the photo element is replaced by a background
+  // refresh (below), and a listener bound to the old one would die with it.
+  document.addEventListener('pointerdown', e => {
+    const photo = e.target.closest('.photo');
+    if (!photo) return;
+    e.preventDefault();
+    photo.setPointerCapture(e.pointerId);
+    const r0 = photo.getBoundingClientRect();
+    // page-coordinate center — fixed during resize, follows the cursor on move
+    const cx0 = r0.left + r0.width / 2 + scrollX;
+    const cy0 = r0.top + r0.height / 2 + scrollY;
+    const resizing = e.clientX > r0.right - 18 && e.clientY > r0.bottom - 18;
+    const dx = cx0 - e.pageX;
+    const dy = cy0 - e.pageY;
+    if (!resizing) photo.classList.add('dragging');
+    const onMove = ev => {
+      if (resizing) {
+        // width only — height follows the image's natural aspect ratio
+        photo.style.width = `${Math.max(32, Math.round((ev.pageX - cx0) * 2))}px`;
+      } else {
+        photo.style.left = `${Math.round(ev.pageX + dx)}px`;
+        photo.style.top = `${Math.round(ev.pageY + dy)}px`;
+      }
+    };
+    const up = () => {
+      photo.removeEventListener('pointermove', onMove);
+      photo.classList.remove('dragging');
+      const r = photo.getBoundingClientRect();
+      const cx = r.left + r.width / 2 + scrollX;
+      const cy = r.top + r.height / 2 + scrollY;
+      const pos = `${(cx / innerWidth * 100).toFixed(1)}% ${Math.round(cy)}px ${Math.round(r.width)}px`;
+      fetch('/image-position', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `pos=${encodeURIComponent(pos)}`,
+      }).catch(() => { /* position still applies until reload */ });
+    };
+    photo.addEventListener('pointermove', onMove);
+    photo.addEventListener('pointerup', up, { once: true });
+  });
+
+  // The problem is from far away every network round trip is a quarter second, and
+  // a start page should be up before the hand leaves the keyboard. The way we solve
+  // this is a service worker (sw.js) that answers "/" from cache at once and fetches
+  // the real page behind it; when that differs, the list is swapped in place here —
+  // keeping open groups, the search, and the dialog exactly as the user has them.
+  // flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
+  if ('serviceWorker' in navigator && dialog) {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* plain network loads still work */ });
+    const refresh = html => {
+      if (dialog?.open) return; // never pull the page out from under an open dialog
+      const next = new DOMParser().parseFromString(html, 'text/html');
+      const open = new Set(groups.filter(d => d.open).map(d => d.dataset.tag));
+      document.querySelector('main').replaceWith(next.querySelector('main'));
+      const oldPicker = document.getElementById('tag-picker');
+      const newPicker = next.getElementById('tag-picker');
+      if (oldPicker && newPicker) oldPicker.replaceWith(newPicker);
+      else if (oldPicker) oldPicker.remove();
+      else if (newPicker && form) form.elements.tags.insertAdjacentElement('afterend', newPicker);
+      groups = [...document.querySelectorAll('details.tag')];
+      for (const d of groups) d.open = open.has(d.dataset.tag);
+      filter();
+    };
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'refresh') refresh(e.data.html);
+      if (e.data?.type === 'expired') location.replace('/login');
     });
   }
 
