@@ -156,7 +156,7 @@ export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
 </header>
 <section class="controls">
   <input id="search" type="search" placeholder="search (press /)" autocomplete="off">
-  <span class="buttons"><button type="button" id="pin-new">+ pin a link</button>${groups.length ? '<button type="button" id="review-start">review</button>' : ''}</span>
+  <span class="buttons"><button type="button" id="pin-new">+ pin a link</button>${groups.length ? '<button type="button" id="review-start" title="press r">review</button>' : ''}</span>
 </section>
 ${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
 <main>
@@ -192,7 +192,7 @@ ${archived.map(linkItem).join('\n')}
   </form>
 </dialog>
 <dialog id="review">
-  <div class="review-head"><span id="review-count"></span><button type="button" class="quiet" id="review-close">close</button></div>
+  <div class="review-head"><span id="review-count"></span><span class="review-tools"><button type="button" class="quiet" id="review-edit" aria-label="edit this link">✎ edit</button><button type="button" class="quiet" id="review-close">close</button></span></div>
   <div class="deck">
     <article class="card under" aria-hidden="true"></article>
     <article class="card" id="review-card" tabindex="-1">

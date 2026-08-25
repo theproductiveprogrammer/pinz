@@ -251,6 +251,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 
 #review { width: min(30rem, 94vw); padding: 1rem 1.2rem 1.2rem; }
 .review-head { display: flex; justify-content: space-between; font-family: var(--display); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2em; color: var(--accent); }
+.review-tools { display: flex; gap: 1rem; }
+.review-tools button { font: inherit; text-transform: inherit; letter-spacing: inherit; }
 .deck { position: relative; height: min(24rem, 55vh); margin: 0.9rem 0; }
 .card {
   position: absolute;

@@ -74,6 +74,8 @@
   // to match the mode.
   // flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   const dialog = document.getElementById('pin-dialog');
+  // assigned below; review mode (further down) hands its card to the same dialog
+  let openDialog = () => {};
   const form = document.getElementById('pin-form');
   if (dialog && form) {
     const heading = document.getElementById('pin-heading');
@@ -114,7 +116,7 @@
     // One dialog, three shapes: pin a link, edit a pin, pin a fresh upload.
     // File pins show a filename row instead of the URL input; every pin being
     // edited can be archived or deleted.
-    const openDialog = (li, upload) => {
+    openDialog = (li, upload) => {
       form.reset();
       const editing = !!li;
       const file = upload?.file || (li ? li.dataset.file : '');
@@ -354,6 +356,7 @@
       const li = deck[at];
       count.textContent = li ? `${at + 1} / ${deck.length}` : `${deck.length} / ${deck.length}`;
       card.hidden = !li;
+      document.getElementById('review-edit').hidden = !li;
       under.hidden = !deck[at + 1];
       end.hidden = !!li;
       if (!li) { end.textContent = `all ${deck.length} reviewed — ${opened} opened`; return; }
@@ -385,19 +388,46 @@
       setTimeout(showCard, 160);
     };
 
+    // Set when review stepped aside for the edit dialog: the next "review" click
+    // picks the deck up at the same card instead of reshuffling.
+    let paused = false;
+
     const startReview = () => {
-      deck = buildDeck();
-      at = 0;
-      opened = 0;
+      if (!paused) { deck = buildDeck(); at = 0; opened = 0; }
+      paused = false;
       showCard();
       review.showModal();
       card.focus();
     };
     startBtn.addEventListener('click', startReview);
+    // "r" from anywhere on the board, like "/" for search — never from inside a
+    // text field or over an open dialog.
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'r' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) || document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      startReview();
+    });
     document.getElementById('review-close').addEventListener('click', () => review.close());
+
+    // The problem is a card sometimes needs fixing (retag, retitle, delete) right
+    // there, and the edit dialog already does all of that. The way we solve this is
+    // handing the card's row to the existing dialog — a save reloads the page, a
+    // cancel leaves the deck paused so "review" resumes it.
+    // flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> POST /edit
+    const editBtn = document.getElementById('review-edit');
+    const editCurrent = () => {
+      const li = deck[at];
+      if (!li) return;
+      paused = true;
+      review.close();
+      openDialog(li);
+    };
+    editBtn.addEventListener('click', editCurrent);
     review.addEventListener('keydown', e => {
       if (e.key === 'ArrowRight') { e.preventDefault(); verdict(true); }
       if (e.key === 'ArrowLeft') { e.preventDefault(); verdict(false); }
+      if (e.key === 'e') { e.preventDefault(); editCurrent(); }
     });
 
     // Swipe: the card follows the finger; past a third of its width (or a quick
