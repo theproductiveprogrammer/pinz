@@ -279,8 +279,6 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 .card .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .card .tags span { font-family: var(--display); font-size: 0.72rem; font-weight: 700; color: var(--accent); }
 .card .ext { align-self: flex-start; }
-.review-end { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-family: var(--display); font-weight: 700; }
-.review-end[hidden] { display: none; }
 .review-actions { display: flex; justify-content: space-between; align-items: center; font-family: var(--display); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
 .hint { color: var(--muted); transition: color 120ms; }
 .hint.lit { color: var(--accent); }

@@ -201,7 +201,6 @@ ${archived.map(linkItem).join('\n')}
       <p class="meta"><span id="review-domain"></span><span id="review-age"></span></p>
       <div class="tags" id="review-tags"></div>
     </article>
-    <p class="review-end" id="review-end" hidden></p>
   </div>
   <div class="review-actions">
     <span class="hint" id="hint-pass">← pass</span>

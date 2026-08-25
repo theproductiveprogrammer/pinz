@@ -352,13 +352,11 @@
   if (review && startBtn) {
     const card = document.getElementById('review-card');
     const under = review.querySelector('.card.under');
-    const end = document.getElementById('review-end');
     const count = document.getElementById('review-count');
     const hintPass = document.getElementById('hint-pass');
     const hintOpen = document.getElementById('hint-open');
     let deck = [];
     let at = 0;
-    let opened = 0;
 
     // The deck holds keys (URL or stored path), not rows: an edit re-renders the
     // list, and the card must find the link's fresh row — or notice it's gone.
@@ -396,12 +394,11 @@
       hintPass.classList.remove('lit');
       hintOpen.classList.remove('lit');
       const li = current();
-      count.textContent = li ? `${at + 1} / ${deck.length}` : `${deck.length} / ${deck.length}`;
-      card.hidden = !li;
-      document.getElementById('review-edit').hidden = !li;
+      // last card gone: the review is simply over
+      if (!li) { review.close(); return; }
+      count.textContent = `${at + 1} / ${deck.length}`;
+      card.hidden = false;
       under.hidden = !deck[at + 1];
-      end.hidden = !!li;
-      if (!li) { end.textContent = `all ${deck.length} reviewed — ${opened} opened`; return; }
       const link = li.dataset.link;
       const a = li.querySelector('a');
       document.getElementById('review-title').textContent = a.textContent;
@@ -423,7 +420,7 @@
     const verdict = open => {
       const li = current();
       if (!li) return;
-      if (open) { window.open(li.querySelector('a').href, '_blank'); opened++; }
+      if (open) window.open(li.querySelector('a').href, '_blank');
       card.classList.remove('dragging');
       card.style.transform = `translateX(${open ? 120 : -120}%) rotate(${open ? 12 : -12}deg)`;
       at++;
@@ -431,10 +428,11 @@
     };
 
     const startReview = () => {
-      if (!reviewPaused) { deck = buildDeck(); at = 0; opened = 0; }
+      if (!reviewPaused) { deck = buildDeck(); at = 0; }
       reviewPaused = false;
-      showCard();
+      if (!current()) return; // nothing to review (or the edited card was the last)
       review.showModal();
+      showCard();
       card.focus();
     };
     startBtn.addEventListener('click', startReview);
