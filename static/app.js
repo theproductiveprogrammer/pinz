@@ -133,7 +133,7 @@
       form.elements.link.required = !file;
       form.elements.link.disabled = !!file;
       fileRow.hidden = !file;
-      showIconRow(editing && !file ? li : null);
+      showIconRow(editing && !file ? li.dataset.host : '');
       if (file) {
         const name = file.split('/').pop().replace(/^\d+-/, '');
         document.getElementById('pin-file-ext').textContent = (name.split('.').pop() ?? '').slice(0, 5).toUpperCase();
@@ -209,15 +209,21 @@
     let iconHost = '';
     const iconSrc = (host, v) => `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}`;
     const say = text => { iconMsg.textContent = text; iconMsg.hidden = !text; };
-    const showIconRow = li => {
-      iconHost = li?.dataset.host ?? '';
+    // The board's cache key for a link: hostname plus "_port" (mirrors iconKey in
+    // src/favicon.js), so the row can appear before the link is even saved.
+    const hostKey = link => {
+      try { const u = new URL(link); return (u.port ? `${u.hostname}_${u.port}` : u.hostname).toLowerCase(); } catch { return ''; }
+    };
+    // The icon row for a host: version from any row on the board for that host, or none yet.
+    const showIconRow = host => {
+      iconHost = host ?? '';
       iconRow.hidden = !iconHost;
       iconUrlInput.value = '';
       iconUrlInput.hidden = true;
       say('');
       if (!iconHost) return;
       document.getElementById('pin-icon-host').textContent = iconHost.replace(/^www\./, '').replace('_', ':');
-      paintIcon(iconHost, li.dataset.icon);
+      paintIcon(iconHost, document.querySelector(`li[data-host="${CSS.escape(iconHost)}"]`)?.dataset.icon ?? '');
     };
     // one host, every row: the board, the dialog, and the review card (which reads the row)
     const paintIcon = (host, v) => {
@@ -265,6 +271,10 @@
       if (ok) { iconUrlInput.value = ''; iconUrlInput.hidden = true; }
       else if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|\[::1\])/i.test(url)) say("that's on your machine — the server can't reach it; use \"from file\" or paste the image here");
     };
+    // a new pin: once the URL is in, its host's icon can be seen and edited too
+    form.elements.link.addEventListener('change', () => {
+      if (!form.elements.orig.value) showIconRow(hostKey(form.elements.link.value.trim()));
+    });
     document.getElementById('pin-icon-refetch').addEventListener('click', () => editIcon('refetch'));
     document.getElementById('pin-icon-remove').addEventListener('click', () => editIcon('remove'));
     // the URL box stays out of the way until asked for

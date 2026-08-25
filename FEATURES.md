@@ -176,22 +176,22 @@ means a function missing its flow line.
 - `iconRow` — static/app.js:203
   - flow: edit dialog icon row -> POST /favicon | /favicon/upload -> paintIcon() <-- HERE
   - problem: the automatic site icon can be missing, stale, or unreachable from the server (a bot wall, a local dev app), and the user can usually get the image themselves.
-- (module) — static/app.js:303
+- (module) — static/app.js:313
   - flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
   - problem: a save from inside review mode must not reload the page — that would throw the deck away.
-- `addEventListener` — static/app.js:345
+- `addEventListener` — static/app.js:355
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- (module) — static/app.js:370
+- (module) — static/app.js:380
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
-- `applyPage` — static/app.js:421
+- `applyPage` — static/app.js:431
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
-- `review` — static/app.js:453
+- `review` — static/app.js:463
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:566
+- `editBtn` — static/app.js:576
   - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
   - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51
