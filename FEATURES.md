@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-57 flows indexed.
+58 flows indexed.
 
 ## .
 
@@ -38,34 +38,37 @@ means a function missing its flow line.
 
 ## src
 
-- `createApp` — src/app.js:45
+- `createApp` — src/app.js:46
   - flow: server start — server.js -> createApp() <-- HERE
-- (module) — src/app.js:55
+- (module) — src/app.js:56
   - flow: main screen loads -> static/app.js registers -> GET /sw.js <-- HERE
-- (module) — src/app.js:67
+- (module) — src/app.js:68
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:88
+- (module) — src/app.js:89
   - flow: pin dialog (new link or uploaded file) -> POST /add <-- HERE -> addLink | addFilePin
-- (module) — src/app.js:109
+- (module) — src/app.js:112
   - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
   - problem: fixing a pin's fields and completing/restoring it are one dialog to the user.
-- (module) — src/app.js:129
+- (module) — src/app.js:132
   - flow: file dropped on the page -> static/app.js -> POST /upload <-- HERE -> pin dialog
   - problem: dropped documents need somewhere to live before they're pinned.
-- (module) — src/app.js:144
+- (module) — src/app.js:147
   - flow: file pin clicked -> GET /file/* <-- HERE
   - problem: pinned documents are as private as the bookmarks.
-- (module) — src/app.js:162
+- (module) — src/app.js:165
   - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete <-- HERE -> deletePin
-- (module) — src/app.js:176
+- (module) — src/app.js:179
   - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
   - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
-- (module) — src/app.js:189
+- (module) — src/app.js:192
   - flow: main screen <img src="/img?v=…"> -> GET /img <-- HERE -> webPicture
   - problem: the profile picture lives under data/, which is private, and the original is far too big to ship.
-- (module) — src/app.js:205
+- (module) — src/app.js:212
+  - flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
+  - problem: a site icon is shared by every link on that domain and never changes in practice.
+- (module) — src/app.js:225
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:214
+- (module) — src/app.js:234
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -166,7 +169,7 @@ means a function missing its flow line.
 - `review` — static/app.js:350
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:455
+- `editBtn` — static/app.js:465
   - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
   - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51

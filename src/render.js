@@ -198,7 +198,7 @@ ${archived.map(linkItem).join('\n')}
     <article class="card" id="review-card" tabindex="-1">
       <span class="ext" id="review-ext" hidden></span>
       <h3 id="review-title"></h3>
-      <p class="meta"><span id="review-domain"></span><span id="review-age"></span></p>
+      <p class="meta"><img id="review-icon" alt="" hidden><span id="review-domain"></span><span id="review-age"></span></p>
       <div class="tags" id="review-tags"></div>
     </article>
   </div>

@@ -273,7 +273,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 .card[hidden] { display: none; }
 .card.under { transform: scale(0.96) translateY(20px); opacity: 0.45; }
 .card h3 { margin: 0; font-family: var(--display); font-size: clamp(1.3rem, 5vw, 1.8rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.card .meta { margin: 0; color: var(--muted); font-size: 0.9rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.card .meta { margin: 0; color: var(--muted); font-size: 0.9rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+#review-icon { width: 20px; height: 20px; object-fit: contain; }
+#review-icon[hidden] { display: none; }
 .card .meta span:empty { display: none; }
 .card .meta span + span:not(:empty)::before { content: "· "; }
 .card .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }

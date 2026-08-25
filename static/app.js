@@ -406,14 +406,24 @@
       const extEl = document.getElementById('review-ext');
       extEl.hidden = !ext;
       extEl.textContent = ext ? ext.textContent : '';
-      let domain = '';
-      try { domain = link ? new URL(link).hostname.replace(/^www\./, '') : ''; } catch { /* file pin */ }
-      document.getElementById('review-domain').textContent = domain;
+      let host = '';
+      try { host = link ? new URL(link).hostname : ''; } catch { /* file pin */ }
+      document.getElementById('review-domain').textContent = host.replace(/^www\./, '');
+      // the site's icon, if the server has (or can get) one; hidden until it loads
+      const icon = document.getElementById('review-icon');
+      icon.hidden = true;
+      icon.src = host ? `/favicon/${encodeURIComponent(host)}` : '';
       document.getElementById('review-age').textContent = age(li.dataset.added);
       document.getElementById('review-tags').replaceChildren(...li.dataset.tags.split(/,\s*/).filter(Boolean).map(t => {
         const s = document.createElement('span'); s.textContent = `#${t}`; return s;
       }));
     };
+
+    {
+      const icon = document.getElementById('review-icon');
+      icon.addEventListener('load', () => { icon.hidden = false; });
+      icon.addEventListener('error', () => { icon.hidden = true; });
+    }
 
     // Understand: window.open must run synchronously inside the user's gesture
     // (key or pointerup) or the browser treats it as a popup and blocks it.

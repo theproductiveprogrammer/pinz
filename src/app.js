@@ -9,6 +9,7 @@ import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getD
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 import { webPicture, pictureVersion } from './image.js';
+import { siteIcon, validHost } from './favicon.js';
 
 // The picture path comes from a hand-editable YAML, so it's only trusted once
 // resolved and proven to sit inside the data dir. Returns null for none/unsafe.
@@ -99,6 +100,8 @@ export function createApp() {
     const fields = pinFields(req.body);
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const result = await addLink(req.user, fields);
+    // warm the icon cache now so the review card never waits on it; never awaited
+    siteIcon(new URL(fields.link).hostname).catch(() => {});
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'restored'}=1`);
   }));
 
@@ -200,6 +203,23 @@ export function createApp() {
     // versioned URLs change when the picture does, so they can be cached forever
     res.setHeader('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, max-age=3600');
     res.sendFile(out, err => { if (err && !res.headersSent) res.status(404).end(); });
+  }));
+
+  // The problem is a site icon is shared by every link on that domain and never
+  // changes in practice. The way we solve this is one route keyed by hostname that
+  // serves the cached file (fetching it the first time) with a month of browser
+  // cache; a miss is a 404 the card quietly hides.
+  // flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
+  app.get('/favicon/:host', wrap(requireAuth), wrap(async (req, res) => {
+    if (!validHost(req.params.host)) return res.status(400).end();
+    const file = await siteIcon(req.params.host);
+    // a miss is cached a day too, so the card doesn't re-ask for icons that don't exist
+    if (!file) { res.setHeader('Cache-Control', 'private, max-age=86400'); return res.status(404).end(); }
+    res.setHeader('Cache-Control', 'private, max-age=2592000');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // an svg icon is a document if opened directly; sandboxed, it can't run anything
+    if (file.endsWith('.svg')) res.setHeader('Content-Security-Policy', "sandbox; script-src 'none'");
+    res.sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
   // flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
