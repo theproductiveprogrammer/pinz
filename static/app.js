@@ -282,7 +282,7 @@
   if ('serviceWorker' in navigator && dialog) {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* plain network loads still work */ });
     const refresh = html => {
-      if (dialog?.open) return; // never pull the page out from under an open dialog
+      if (document.querySelector('dialog[open]')) return; // never pull the page out from under an open dialog
       const next = new DOMParser().parseFromString(html, 'text/html');
       const open = new Set(groups.filter(d => d.open).map(d => d.dataset.tag));
       document.querySelector('main').replaceWith(next.querySelector('main'));
@@ -298,6 +298,134 @@
     navigator.serviceWorker.addEventListener('message', e => {
       if (e.data?.type === 'refresh') refresh(e.data.html);
       if (e.data?.type === 'expired') location.replace('/login');
+    });
+  }
+
+  // The problem is links pile up faster than they're read, and scanning a long list
+  // never answers "is this still worth opening?". The way we solve this is a deck:
+  // every active link, shuffled, one card at a time — swipe/arrow right opens it in
+  // a new tab, left passes. Nothing is changed by reviewing; deleting and retagging
+  // stay in the edit dialog.
+  // flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
+  const review = document.getElementById('review');
+  const startBtn = document.getElementById('review-start');
+  if (review && startBtn) {
+    const card = document.getElementById('review-card');
+    const under = review.querySelector('.card.under');
+    const end = document.getElementById('review-end');
+    const count = document.getElementById('review-count');
+    const hintPass = document.getElementById('hint-pass');
+    const hintOpen = document.getElementById('hint-open');
+    let deck = [];
+    let at = 0;
+    let opened = 0;
+
+    // Every active link once (a link under two tags is listed twice), in random order.
+    const buildDeck = () => {
+      const seen = new Set();
+      const items = [];
+      for (const li of document.querySelectorAll('details.tag:not(.archive) li')) {
+        const key = li.dataset.link || li.dataset.file;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push(li);
+      }
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
+    };
+
+    const age = iso => {
+      const days = Math.floor((Date.now() - new Date(iso)) / 86400000);
+      if (Number.isNaN(days)) return '';
+      if (days < 1) return 'today';
+      if (days < 30) return `${days}d ago`;
+      if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+      return `${Math.floor(days / 365)}y ago`;
+    };
+
+    const showCard = () => {
+      card.classList.remove('dragging');
+      card.style.transform = '';
+      hintPass.classList.remove('lit');
+      hintOpen.classList.remove('lit');
+      const li = deck[at];
+      count.textContent = li ? `${at + 1} / ${deck.length}` : `${deck.length} / ${deck.length}`;
+      card.hidden = !li;
+      under.hidden = !deck[at + 1];
+      end.hidden = !!li;
+      if (!li) { end.textContent = `all ${deck.length} reviewed — ${opened} opened`; return; }
+      const link = li.dataset.link;
+      const a = li.querySelector('a');
+      document.getElementById('review-title').textContent = a.textContent;
+      const ext = li.querySelector('.ext');
+      const extEl = document.getElementById('review-ext');
+      extEl.hidden = !ext;
+      extEl.textContent = ext ? ext.textContent : '';
+      let domain = '';
+      try { domain = link ? new URL(link).hostname.replace(/^www\./, '') : ''; } catch { /* file pin */ }
+      document.getElementById('review-domain').textContent = domain;
+      document.getElementById('review-age').textContent = age(li.dataset.added);
+      document.getElementById('review-tags').replaceChildren(...li.dataset.tags.split(/,\s*/).filter(Boolean).map(t => {
+        const s = document.createElement('span'); s.textContent = `#${t}`; return s;
+      }));
+    };
+
+    // Understand: window.open must run synchronously inside the user's gesture
+    // (key or pointerup) or the browser treats it as a popup and blocks it.
+    const verdict = open => {
+      const li = deck[at];
+      if (!li) return;
+      if (open) { window.open(li.querySelector('a').href, '_blank'); opened++; }
+      card.classList.remove('dragging');
+      card.style.transform = `translateX(${open ? 120 : -120}%) rotate(${open ? 12 : -12}deg)`;
+      at++;
+      setTimeout(showCard, 160);
+    };
+
+    const startReview = () => {
+      deck = buildDeck();
+      at = 0;
+      opened = 0;
+      showCard();
+      review.showModal();
+      card.focus();
+    };
+    startBtn.addEventListener('click', startReview);
+    document.getElementById('review-close').addEventListener('click', () => review.close());
+    review.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); verdict(true); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); verdict(false); }
+    });
+
+    // Swipe: the card follows the finger; past a third of its width (or a quick
+    // flick) the release is the verdict, otherwise it springs back.
+    card.addEventListener('pointerdown', e => {
+      if (!deck[at]) return;
+      e.preventDefault();
+      card.setPointerCapture(e.pointerId);
+      card.classList.add('dragging');
+      const x0 = e.clientX;
+      const t0 = Date.now();
+      const limit = card.offsetWidth / 3;
+      let dx = 0;
+      const onMove = ev => {
+        dx = ev.clientX - x0;
+        card.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
+        hintOpen.classList.toggle('lit', dx > limit);
+        hintPass.classList.toggle('lit', dx < -limit);
+      };
+      const onUp = () => {
+        card.removeEventListener('pointermove', onMove);
+        const flick = Math.abs(dx) > 40 && Date.now() - t0 < 250;
+        if (Math.abs(dx) > limit || flick) verdict(dx > 0);
+        else { card.classList.remove('dragging'); card.style.transform = ''; }
+      };
+      card.addEventListener('pointermove', onMove);
+      card.addEventListener('pointerup', onUp, { once: true });
+      card.addEventListener('pointercancel', onUp, { once: true });
     });
   }
 

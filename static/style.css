@@ -100,6 +100,14 @@ button.quiet:hover { color: var(--accent); }
   padding: 0.3rem 0.7rem;
 }
 #pin-new:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls .buttons { display: flex; gap: 0.5rem; }
+#review-start {
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.7rem;
+}
 
 .notice { color: var(--accent); margin: -0.75rem 0 1rem; font-size: 0.9rem; }
 body.dropping { outline: 3px dashed var(--accent); outline-offset: -6px; }
@@ -238,6 +246,42 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 #pin-file-row a { margin-left: auto; }
 .danger:hover { color: var(--error) !important; }
 #pin-delete { margin-right: auto; }
+
+/* ---------- review: one card at a time, swipe right to open, left to pass ---------- */
+
+#review { width: min(30rem, 94vw); padding: 1rem 1.2rem 1.2rem; }
+.review-head { display: flex; justify-content: space-between; font-family: var(--display); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2em; color: var(--accent); }
+.deck { position: relative; height: min(24rem, 55vh); margin: 0.9rem 0; }
+.card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1.6rem 1.5rem;
+  border: 2px solid var(--rule);
+  background: var(--bg);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  transition: transform 180ms ease-out;
+}
+.card.dragging { transition: none; cursor: grabbing; }
+.card[hidden] { display: none; }
+.card.under { transform: scale(0.96) translateY(20px); opacity: 0.45; }
+.card h3 { margin: 0; font-family: var(--display); font-size: clamp(1.3rem, 5vw, 1.8rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.card .meta { margin: 0; color: var(--muted); font-size: 0.9rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.card .meta span:empty { display: none; }
+.card .meta span + span:not(:empty)::before { content: "· "; }
+.card .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.card .tags span { font-family: var(--display); font-size: 0.72rem; font-weight: 700; color: var(--accent); }
+.card .ext { align-self: flex-start; }
+.review-end { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-family: var(--display); font-weight: 700; }
+.review-end[hidden] { display: none; }
+.review-actions { display: flex; justify-content: space-between; align-items: center; font-family: var(--display); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+.hint { color: var(--muted); transition: color 120ms; }
+.hint.lit { color: var(--accent); }
 
 /* ---------- login ---------- */
 

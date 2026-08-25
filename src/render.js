@@ -103,7 +103,7 @@ function linkItem(l) {
   const search = [text, ...l.tags].join(' ').toLowerCase();
   // Same-tab on purpose: pinz is a start page, so a click hands the tab over
   // to the link (cmd/ctrl-click still opens a new one).
-  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-search="${escapeHtml(search)}">${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
+  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-added="${escapeHtml(l.added ?? '')}" data-search="${escapeHtml(search)}">${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
@@ -156,7 +156,7 @@ export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
 </header>
 <section class="controls">
   <input id="search" type="search" placeholder="search (press /)" autocomplete="off">
-  <button type="button" id="pin-new">+ pin a link</button>
+  <span class="buttons"><button type="button" id="pin-new">+ pin a link</button>${groups.length ? '<button type="button" id="review-start">review</button>' : ''}</span>
 </section>
 ${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
 <main>
@@ -190,6 +190,23 @@ ${archived.map(linkItem).join('\n')}
       <button name="action" value="save" id="pin-submit">pin</button>
     </div>
   </form>
+</dialog>
+<dialog id="review">
+  <div class="review-head"><span id="review-count"></span><button type="button" class="quiet" id="review-close">close</button></div>
+  <div class="deck">
+    <article class="card under" aria-hidden="true"></article>
+    <article class="card" id="review-card" tabindex="-1">
+      <span class="ext" id="review-ext" hidden></span>
+      <h3 id="review-title"></h3>
+      <p class="meta"><span id="review-domain"></span><span id="review-age"></span></p>
+      <div class="tags" id="review-tags"></div>
+    </article>
+    <p class="review-end" id="review-end" hidden></p>
+  </div>
+  <div class="review-actions">
+    <span class="hint" id="hint-pass">← pass</span>
+    <span class="hint" id="hint-open">open →</span>
+  </div>
 </dialog>
 <div id="upload-veil" hidden><div class="card"><span id="upload-label">uploading…</span><div class="bar"><i id="upload-bar"></i></div></div></div>`);
 }

@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-54 flows indexed.
+55 flows indexed.
 
 ## .
 
@@ -160,6 +160,9 @@ means a function missing its flow line.
 - `if` — static/app.js:282
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
+- `review` — static/app.js:310
+  - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
+  - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
 - `pageResponse` — static/sw.js:51
   - flow: new tab -> GET / -> sw fetch handler -> pageResponse() <-- HERE -> app.js refresh
   - problem: the page must feel instant from anywhere, but must also be right.
