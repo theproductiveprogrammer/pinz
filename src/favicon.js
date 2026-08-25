@@ -11,10 +11,22 @@ const TYPES = {
 };
 const EXTS = new Set(Object.values(TYPES));
 
-// Hostnames only — no ports, IPs, or localhost — so a request can't point the
-// server at itself or at the droplet's private network.
+// Public hostnames only — no ports, IPs, or localhost — are ever fetched by the
+// server, so a request can't point it at itself or the droplet's private network.
 const HOST_RE = /^(?=.{1,253}$)(?!localhost$)([a-z0-9-]+\.)+[a-z][a-z0-9-]*$/i;
-export function validHost(h) { return HOST_RE.test(String(h ?? '')); }
+const fetchable = h => HOST_RE.test(String(h ?? ''));
+
+// The cache key for a link: hostname, plus "_port" so local dev apps on
+// different ports (localhost_7942) each keep their own icon.
+export function iconKey(link) {
+  try {
+    const u = new URL(link);
+    return (u.port ? `${u.hostname}_${u.port}` : u.hostname).toLowerCase();
+  } catch { return ''; }
+}
+// A key is a safe filename stem: hostname characters plus an optional _port.
+const KEY_RE = /^(?=.{1,260}$)[a-z0-9](?:[a-z0-9-]*\.)*[a-z0-9-]+(?:_\d{1,5})?$/i;
+export function validKey(k) { return KEY_RE.test(String(k ?? '')); }
 
 const dir = () => path.join(getDataDir(), 'favicons');
 
@@ -89,10 +101,12 @@ async function download(host, url) {
 // flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host -> siteIcon() <-- HERE
 // flow: pin dialog -> POST /add -> siteIcon() (prefetch, not awaited) <-- HERE
 export async function siteIcon(host) {
-  if (!validHost(host)) return null;
+  if (!validKey(host)) return null;
   host = host.toLowerCase();
   const hit = await cached(host);
   if (hit) return hit;
+  // local / IP / port hosts can only get an icon by upload — never fetched
+  if (!fetchable(host)) return null;
   if (await recentMiss(host) || await fsp.access(offFile(host)).then(() => true, () => false)) return null;
   await fsp.mkdir(dir(), { recursive: true });
   const candidates = [await declaredIcon(host), `https://${host}/favicon.ico`].filter(Boolean);
@@ -115,16 +129,37 @@ async function clearIcon(host) {
 // the user found, or remove (and stop trying). Returns the new version, '' if none.
 // flow: edit dialog icon row -> POST /favicon -> editIcon() <-- HERE
 export async function editIcon(host, action, url) {
-  if (!validHost(host)) return null;
+  if (!validKey(host)) return null;
   host = host.toLowerCase();
   await fsp.mkdir(dir(), { recursive: true });
   await clearIcon(host);
   let file = null;
   if (action === 'refetch') file = await siteIcon(host);
-  else if (action === 'set') { try { file = await download(host, new URL(url).href); } catch { file = null; } }
+  else if (action === 'set') {
+    // the server does the download, so the image must live somewhere public —
+    // a localhost URL would point at the droplet, not the user's machine
+    try { const u = new URL(url); if (!fetchable(u.hostname)) return null; file = await download(host, u.href); } catch { file = null; }
+  }
   else if (action === 'remove') await fsp.writeFile(offFile(host), '');
   else return null;
   return file ? versionOf(await fsp.stat(file)) : '';
+}
+
+// The problem is some icons the server can't reach at all — local dev apps, sites
+// behind a login. The way we solve this is taking the image bytes from the user's
+// browser (file picker, paste, or a CORS-readable URL) and storing them exactly as
+// a fetched icon would be.
+// flow: edit dialog icon row "from file" / paste -> POST /favicon/upload -> storeIcon() <-- HERE
+export async function storeIcon(host, buf, contentType) {
+  if (!validKey(host)) return null;
+  const ext = TYPES[String(contentType ?? '').split(';')[0].trim().toLowerCase()];
+  if (!ext || !buf?.length || buf.length > MAX_BYTES) return null;
+  host = host.toLowerCase();
+  await fsp.mkdir(dir(), { recursive: true });
+  await clearIcon(host);
+  const file = path.join(dir(), `${host}.${ext}`);
+  await fsp.writeFile(file, buf);
+  return versionOf(await fsp.stat(file));
 }
 
 const versionOf = st => Math.round(st.mtimeMs).toString(36);

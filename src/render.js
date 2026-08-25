@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { iconKey } from './favicon.js';
 
 // The problem is /static ships with a year of browser cache, so a deploy could
 // leave users on stale assets mismatched with fresh HTML. The way we solve this is
@@ -92,11 +93,6 @@ export function errorPage(message, status = 500) {
 // Each item carries its own data as attributes so the edit dialog can prefill
 // without another server round-trip. File pins get an extension marker and an
 // authed /file/ href; links keep their URL.
-// The link's hostname, or '' for file pins and anything unparsable.
-function hostOf(link) {
-  try { return link ? new URL(link).hostname.toLowerCase() : ''; } catch { return ''; }
-}
-
 // Versioned icon URL for a host, or '' when there's no cached icon.
 const iconUrl = (host, v) => v ? `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}` : '';
 
@@ -108,7 +104,7 @@ function linkItem(l, icons) {
   const text = (l.title ?? '').trim() || (isFile ? fileName : l.link);
   const href = isFile ? `/file/${l.file.split('/').map(encodeURIComponent).join('/')}` : l.link;
   const ext = isFile ? (fileName.split('.').pop() ?? '').slice(0, 5).toUpperCase() : '';
-  const host = hostOf(l.link);
+  const host = l.link ? iconKey(l.link) : '';
   const v = icons.get(host) ?? '';
   const icon = v ? `<img class="icon" src="${escapeHtml(iconUrl(host, v))}" alt="" loading="lazy">` : '<i class="icon"></i>';
   // Search matches what the eye sees: the displayed text plus tags — not the
@@ -198,7 +194,11 @@ ${archived.map(l => linkItem(l, icons)).join('\n')}
       <img id="pin-icon" alt="" hidden><i id="pin-icon-none" class="icon"></i><span id="pin-icon-host"></span>
       <button type="button" class="quiet" id="pin-icon-refetch">↻ refetch</button>
       <button type="button" class="quiet danger" id="pin-icon-remove">✕ remove</button>
-      <input id="pin-icon-url" placeholder="…or paste an image URL" autocomplete="off">
+      <button type="button" class="quiet" id="pin-icon-from-url">from URL</button>
+      <button type="button" class="quiet" id="pin-icon-from-file">from file</button>
+      <input id="pin-icon-url" placeholder="image URL, then Enter" autocomplete="off" hidden>
+      <input id="pin-icon-file" type="file" accept="image/*" hidden>
+      <span id="pin-icon-msg" class="error" hidden></span>
     </div>
     ${allTags.length ? `<div id="tag-picker">${allTags.map(t => `<button type="button" class="chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
     <div class="actions">

@@ -191,23 +191,32 @@
       dialog.close();
     });
 
-    // The problem is the automatic site icon can be missing, stale, or blocked (a
-    // bot wall), and the user can often find the right image themselves. The way we
-    // solve this is an icon row on every edited link: refetch, remove, or paste an
-    // image URL; the answer is stamped onto every row for that host on the board.
-    // flow: edit dialog icon row -> POST /favicon -> paintIcon() <-- HERE
+    // The problem is the automatic site icon can be missing, stale, or unreachable
+    // from the server (a bot wall, a local dev app), and the user can usually get the
+    // image themselves. The way we solve this is an icon row on every edited link:
+    // refetch, remove, an image URL (tried in the browser first, then by the server),
+    // a file picker, or a pasted image; the answer is stamped onto every row for
+    // that host on the board. Understand: the browser can only read another site's
+    // image bytes when that site sends CORS headers, so the URL path has to fall back
+    // to the server — and for localhost only a file or a paste can work.
+    // flow: edit dialog icon row -> POST /favicon | /favicon/upload -> paintIcon() <-- HERE
     const iconRow = document.getElementById('pin-icon-row');
     const iconImg = document.getElementById('pin-icon');
     const iconNone = document.getElementById('pin-icon-none');
     const iconUrlInput = document.getElementById('pin-icon-url');
+    const iconFileInput = document.getElementById('pin-icon-file');
+    const iconMsg = document.getElementById('pin-icon-msg');
     let iconHost = '';
     const iconSrc = (host, v) => `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}`;
+    const say = text => { iconMsg.textContent = text; iconMsg.hidden = !text; };
     const showIconRow = li => {
       iconHost = li?.dataset.host ?? '';
       iconRow.hidden = !iconHost;
       iconUrlInput.value = '';
+      iconUrlInput.hidden = true;
+      say('');
       if (!iconHost) return;
-      document.getElementById('pin-icon-host').textContent = iconHost.replace(/^www\./, '');
+      document.getElementById('pin-icon-host').textContent = iconHost.replace(/^www\./, '').replace('_', ':');
       paintIcon(iconHost, li.dataset.icon);
     };
     // one host, every row: the board, the dialog, and the review card (which reads the row)
@@ -222,31 +231,66 @@
         slot ? slot.replaceWith(fresh) : li.prepend(fresh);
       }
     };
-    const editIcon = async (action, url = '') => {
-      if (!iconHost) return;
+    // Runs one icon request against the server and paints the answer.
+    const iconRequest = async (send, failText) => {
+      if (!iconHost) return false;
       iconRow.classList.add('busy');
+      say('');
+      let ok = false;
       try {
-        const res = await fetch('/favicon', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ host: iconHost, action, url }),
-        });
-        if (res.ok) paintIcon(iconHost, (await res.json()).v);
-      } catch { /* the row keeps showing what it had */ }
+        const res = await send();
+        ok = res.ok;
+        if (ok) paintIcon(iconHost, (await res.json()).v);
+      } catch { ok = false; }
       iconRow.classList.remove('busy');
+      if (!ok) say(failText);
+      return ok;
+    };
+    const editIcon = (action, url = '') => iconRequest(() => fetch('/favicon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ host: iconHost, action, url }),
+    }), action === 'set' ? "couldn't fetch that image" : "couldn't update the icon");
+    // Image bytes the browser already has (a picked file, a paste, a CORS-readable URL).
+    const uploadIcon = blob => iconRequest(() => fetch(`/favicon/upload?host=${encodeURIComponent(iconHost)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob,
+    }), 'not a usable image (png, ico, jpg, webp, gif or svg, under 512KB)');
+    // A URL: the browser tries first (works when the site allows it), then the server.
+    const iconFromUrl = async url => {
+      let blob = null;
+      try { const r = await fetch(url, { mode: 'cors' }); if (r.ok) blob = await r.blob(); } catch { /* no CORS: the server's turn */ }
+      const ok = blob && blob.type.startsWith('image/') ? await uploadIcon(blob) : await editIcon('set', url);
+      if (ok) { iconUrlInput.value = ''; iconUrlInput.hidden = true; }
+      else if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|\[::1\])/i.test(url)) say("that's on your machine — the server can't reach it; use \"from file\" or paste the image here");
     };
     document.getElementById('pin-icon-refetch').addEventListener('click', () => editIcon('refetch'));
     document.getElementById('pin-icon-remove').addEventListener('click', () => editIcon('remove'));
-    // Enter in the URL field sets the icon without submitting the whole form
+    // the URL box stays out of the way until asked for
+    document.getElementById('pin-icon-from-url').addEventListener('click', () => {
+      iconUrlInput.hidden = !iconUrlInput.hidden;
+      if (!iconUrlInput.hidden) iconUrlInput.focus();
+    });
     iconUrlInput.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
-      e.preventDefault();
+      e.preventDefault(); // Enter here must not submit the whole form
       const url = iconUrlInput.value.trim();
-      if (url) editIcon('set', url).then(() => { iconUrlInput.value = ''; });
+      if (url) iconFromUrl(url);
     });
-    iconUrlInput.addEventListener('change', () => {
-      const url = iconUrlInput.value.trim();
-      if (url) editIcon('set', url).then(() => { iconUrlInput.value = ''; });
+    document.getElementById('pin-icon-from-file').addEventListener('click', () => iconFileInput.click());
+    iconFileInput.addEventListener('change', () => {
+      const f = iconFileInput.files?.[0];
+      iconFileInput.value = '';
+      if (f) uploadIcon(f);
+    });
+    // an image on the clipboard, pasted anywhere in the edit dialog, becomes the icon
+    dialog.addEventListener('paste', e => {
+      if (iconRow.hidden) return;
+      const item = [...(e.clipboardData?.items ?? [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      e.preventDefault();
+      uploadIcon(item.getAsFile());
     });
 
     // pinning claims the upload; closing without pinning deletes the orphan
@@ -465,7 +509,7 @@
       extEl.hidden = !ext;
       extEl.textContent = ext ? ext.textContent : '';
       const host = li.dataset.host;
-      document.getElementById('review-domain').textContent = host.replace(/^www\./, '');
+      document.getElementById('review-domain').textContent = host.replace(/^www\./, '').replace('_', ':');
       // the row already knows whether its host has an icon (and which version)
       const icon = document.getElementById('review-icon');
       icon.hidden = true;

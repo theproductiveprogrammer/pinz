@@ -9,7 +9,7 @@ import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getD
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 import { webPicture, pictureVersion } from './image.js';
-import { siteIcon, editIcon, iconVersions, validHost } from './favicon.js';
+import { siteIcon, editIcon, storeIcon, iconVersions, iconKey, validKey } from './favicon.js';
 
 // The picture path comes from a hand-editable YAML, so it's only trusted once
 // resolved and proven to sit inside the data dir. Returns null for none/unsafe.
@@ -101,7 +101,7 @@ export function createApp() {
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const result = await addLink(req.user, fields);
     // warm the icon cache now so the review card never waits on it; never awaited
-    siteIcon(new URL(fields.link).hostname).catch(() => {});
+    siteIcon(iconKey(fields.link)).catch(() => {});
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'restored'}=1`);
   }));
 
@@ -211,7 +211,7 @@ export function createApp() {
   // cache; a miss is a 404 the card quietly hides.
   // flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
   app.get('/favicon/:host', wrap(requireAuth), wrap(async (req, res) => {
-    if (!validHost(req.params.host)) return res.status(400).end();
+    if (!validKey(req.params.host)) return res.status(400).end();
     const file = await siteIcon(req.params.host);
     // a miss is cached a day too, so the card doesn't re-ask for icons that don't exist
     if (!file) { res.setHeader('Cache-Control', 'private, max-age=86400'); return res.status(404).end(); }
@@ -227,8 +227,17 @@ export function createApp() {
   app.post('/favicon', wrap(requireAuth), wrap(async (req, res) => {
     const host = String(req.body?.host ?? '');
     const action = String(req.body?.action ?? '');
-    if (!validHost(host) || !['refetch', 'set', 'remove'].includes(action)) return res.status(400).end();
+    if (!validKey(host) || !['refetch', 'set', 'remove'].includes(action)) return res.status(400).end();
     const v = await editIcon(host, action, String(req.body?.url ?? ''));
+    if (v === null) return res.status(400).end();
+    res.json({ v });
+  }));
+
+  // flow: edit dialog icon row "from file" / paste / CORS-readable URL -> POST /favicon/upload <-- HERE -> storeIcon
+  app.post('/favicon/upload', wrap(requireAuth), express.raw({ type: () => true, limit: '512kb' }), wrap(async (req, res) => {
+    const host = String(req.query.host ?? '');
+    if (!validKey(host)) return res.status(400).end();
+    const v = await storeIcon(host, req.body, req.headers['content-type']);
     if (v === null) return res.status(400).end();
     res.json({ v });
   }));

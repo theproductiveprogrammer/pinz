@@ -255,6 +255,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 #pin-icon-none { width: 16px; height: 16px; border: 1px dashed var(--line); opacity: 1; filter: none; }
 #pin-icon-none[hidden] { display: none; }
 #pin-icon-url { flex: 1 1 100%; font-size: 0.85rem; padding: 0.35rem 0.6rem; }
+#pin-icon-url[hidden], #pin-icon-msg[hidden] { display: none; }
+#pin-icon-msg { flex: 1 1 100%; font-size: 0.8rem; }
 #pin-icon-row.busy { opacity: 0.5; pointer-events: none; }
 #pin-file-row a { margin-left: auto; }
 .danger:hover { color: var(--error) !important; }
