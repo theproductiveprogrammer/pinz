@@ -148,25 +148,25 @@ means a function missing its flow line.
 - `dialog` — static/app.js:76
   - flow: main screen — "+ pin a link" or an item's ✎ -> openDialog() <-- HERE -> POST /add | /edit
   - problem: one dialog serves three jobs: pin a new link, edit an existing one, and complete/restore it.
-- (module) — static/app.js:173
+- (module) — static/app.js:181
   - flow: edit dialog -> "✕ delete" -> POST /delete
   - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
-- (module) — static/app.js:192
+- (module) — static/app.js:200
   - flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
   - problem: a save from inside review mode must not reload the page — that would throw the deck away.
-- `addEventListener` — static/app.js:234
+- `addEventListener` — static/app.js:242
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- (module) — static/app.js:259
+- (module) — static/app.js:267
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
-- `applyPage` — static/app.js:310
+- `applyPage` — static/app.js:318
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
-- `review` — static/app.js:342
+- `review` — static/app.js:350
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:449
+- `editBtn` — static/app.js:457
   - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
   - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51

@@ -156,7 +156,7 @@ export function homePage({ username, doc, groups, notice = '', imgV = '' }) {
 </header>
 <section class="controls">
   <input id="search" type="search" placeholder="search (press /)" autocomplete="off">
-  <span class="buttons"><button type="button" id="pin-new">+ pin a link</button>${groups.length ? '<button type="button" id="review-start" title="press r">review</button>' : ''}</span>
+  <span class="buttons"><button type="button" id="pin-new" title="press a">+ pin a link</button>${groups.length ? '<button type="button" id="review-start" title="press r">review</button>' : ''}</span>
 </section>
 ${NOTICES[notice] ? `<p class="notice">${escapeHtml(NOTICES[notice])}</p>` : ''}
 <main>

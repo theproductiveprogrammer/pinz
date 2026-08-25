@@ -152,6 +152,14 @@
     };
 
     document.getElementById('pin-new').addEventListener('click', () => openDialog(null));
+    // "a" from anywhere on the board, like "/" for search and "r" for review —
+    // never from inside a text field or over an open dialog.
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'a' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) || document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      openDialog(null);
+    });
     document.addEventListener('click', e => {
       const btn = e.target.closest('li .edit');
       if (btn) openDialog(btn.closest('li'));
