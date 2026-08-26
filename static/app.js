@@ -133,7 +133,7 @@
       form.elements.link.required = !file;
       form.elements.link.disabled = !!file;
       fileRow.hidden = !file;
-      showIconRow(editing && !file ? li.dataset.host : '');
+      showIconRow(editing && !file ? li : null);
       if (file) {
         const name = file.split('/').pop().replace(/^\d+-/, '');
         document.getElementById('pin-file-ext').textContent = (name.split('.').pop() ?? '').slice(0, 5).toUpperCase();
@@ -191,74 +191,76 @@
       dialog.close();
     });
 
-    // The problem is the automatic site icon can be missing, stale, or unreachable
-    // from the server (a bot wall, a local dev app), and the user can usually get the
-    // image themselves. The way we solve this is an icon row on every edited link:
-    // refetch, remove, an image URL (tried in the browser first, then by the server),
-    // a file picker, or a pasted image; the answer is stamped onto every row for
-    // that host on the board. Understand: the browser can only read another site's
-    // image bytes when that site sends CORS headers, so the URL path has to fall back
-    // to the server — and for localhost only a file or a paste can work.
-    // flow: edit dialog icon row -> POST /favicon | /favicon/upload -> paintIcon() <-- HERE
+    // The problem is every pin owns its icon, but the user shouldn't have to find one.
+    // The way we solve this is an icon row in the dialog: a new pin searches as soon
+    // as its URL is typed (site icon, else a same-site pin's icon); any pin can
+    // refetch, remove, or take an image from a URL, a file, or a paste. The result
+    // rides along in the form's hidden icon field and is saved with the pin; files
+    // the dialog created but didn't keep are discarded when it closes. Understand:
+    // the browser can only read another site's image bytes when that site sends
+    // CORS headers, so the URL path falls back to the server — and for localhost
+    // only a file or a paste can work.
+    // flow: pin dialog icon row -> POST /favicon | /favicon/upload -> hidden icon field -> POST /add | /edit
     const iconRow = document.getElementById('pin-icon-row');
     const iconImg = document.getElementById('pin-icon');
     const iconNone = document.getElementById('pin-icon-none');
     const iconUrlInput = document.getElementById('pin-icon-url');
     const iconFileInput = document.getElementById('pin-icon-file');
     const iconMsg = document.getElementById('pin-icon-msg');
+    const iconField = form.elements.icon;
     let iconHost = '';
-    const iconSrc = (host, v) => `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}`;
+    let created = new Set(); // per-link files this dialog made; unsaved ones are discarded
+    let savedIcon = null;
+    const isLinkKey = k => /^l_[0-9a-f]{12}$/.test(k);
+    const iconSrc = (key, v) => `/favicon/${encodeURIComponent(key)}?v=${encodeURIComponent(v)}`;
     const say = text => { iconMsg.textContent = text; iconMsg.hidden = !text; };
-    // The board's cache key for a link: hostname plus "_port" (mirrors iconKey in
-    // src/favicon.js), so the row can appear before the link is even saved.
+    const preview = (key, v) => {
+      iconImg.hidden = !key;
+      iconNone.hidden = !!key;
+      if (key) iconImg.src = iconSrc(key, v);
+    };
+    // The site key for a link: hostname plus "_port" (mirrors iconKey in src/favicon.js).
     const hostKey = link => {
       try { const u = new URL(link); return (u.port ? `${u.hostname}_${u.port}` : u.hostname).toLowerCase(); } catch { return ''; }
     };
-    // The icon row for a host: version from any row on the board for that host, or none yet.
-    const showIconRow = host => {
-      iconHost = host ?? '';
+    // The row for the pin being edited (li), or for a new pin (host from the URL field).
+    const showIconRow = li => {
+      iconHost = li ? li.dataset.host : hostKey(form.elements.link.value.trim());
       iconRow.hidden = !iconHost;
       iconUrlInput.value = '';
       iconUrlInput.hidden = true;
       say('');
       if (!iconHost) return;
       document.getElementById('pin-icon-host').textContent = iconHost.replace(/^www\./, '').replace('_', ':');
-      paintIcon(iconHost, document.querySelector(`li[data-host="${CSS.escape(iconHost)}"]`)?.dataset.icon ?? '');
+      const key = li?.dataset.iconkey ?? '';
+      iconField.value = key;
+      preview(isLinkKey(key) ? key : '', li?.dataset.icon ?? '');
     };
-    // one host, every row: the board, the dialog, and the review card (which reads the row)
-    const paintIcon = (host, v) => {
-      iconImg.hidden = !v;
-      iconNone.hidden = !!v;
-      if (v) iconImg.src = iconSrc(host, v);
-      for (const li of document.querySelectorAll(`li[data-host="${CSS.escape(host)}"]`)) {
-        li.dataset.icon = v;
-        const slot = li.querySelector('.icon');
-        const fresh = v ? Object.assign(document.createElement('img'), { className: 'icon', src: iconSrc(host, v), alt: '' }) : Object.assign(document.createElement('i'), { className: 'icon' });
-        slot ? slot.replaceWith(fresh) : li.prepend(fresh);
-      }
-    };
-    // Runs one icon request against the server and paints the answer.
+    // Runs one icon request; a found icon becomes this pin's (pending save).
     const iconRequest = async (send, failText) => {
-      if (!iconHost) return false;
       iconRow.classList.add('busy');
       say('');
       let ok = false;
       try {
         const res = await send();
-        ok = res.ok;
-        if (ok) paintIcon(iconHost, (await res.json()).v);
+        if (res.ok) {
+          const r = await res.json();
+          if (r.icon) { created.add(r.icon); iconField.value = r.icon; preview(r.icon, r.v); ok = true; }
+        }
       } catch { ok = false; }
       iconRow.classList.remove('busy');
       if (!ok) say(failText);
       return ok;
     };
-    const editIcon = (action, url = '') => iconRequest(() => fetch('/favicon', {
+    const post = body => fetch('/favicon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ host: iconHost, action, url }),
-    }), action === 'set' ? "couldn't fetch that image" : "couldn't update the icon");
+      body: new URLSearchParams(body),
+    });
+    const refetch = () => iconRequest(() => post({ action: 'refetch', link: form.elements.link.value.trim() }),
+      'no icon found for this site — try "from URL" or "from file"');
     // Image bytes the browser already has (a picked file, a paste, a CORS-readable URL).
-    const uploadIcon = blob => iconRequest(() => fetch(`/favicon/upload?host=${encodeURIComponent(iconHost)}`, {
+    const uploadIcon = blob => iconRequest(() => fetch('/favicon/upload', {
       method: 'POST',
       headers: { 'Content-Type': blob.type || 'application/octet-stream' },
       body: blob,
@@ -267,16 +269,14 @@
     const iconFromUrl = async url => {
       let blob = null;
       try { const r = await fetch(url, { mode: 'cors' }); if (r.ok) blob = await r.blob(); } catch { /* no CORS: the server's turn */ }
-      const ok = blob && blob.type.startsWith('image/') ? await uploadIcon(blob) : await editIcon('set', url);
+      const ok = blob && blob.type.startsWith('image/')
+        ? await uploadIcon(blob)
+        : await iconRequest(() => post({ action: 'set', url }), "couldn't fetch that image");
       if (ok) { iconUrlInput.value = ''; iconUrlInput.hidden = true; }
       else if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|\[::1\])/i.test(url)) say("that's on your machine — the server can't reach it; use \"from file\" or paste the image here");
     };
-    // a new pin: once the URL is in, its host's icon can be seen and edited too
-    form.elements.link.addEventListener('change', () => {
-      if (!form.elements.orig.value) showIconRow(hostKey(form.elements.link.value.trim()));
-    });
-    document.getElementById('pin-icon-refetch').addEventListener('click', () => editIcon('refetch'));
-    document.getElementById('pin-icon-remove').addEventListener('click', () => editIcon('remove'));
+    document.getElementById('pin-icon-refetch').addEventListener('click', refetch);
+    document.getElementById('pin-icon-remove').addEventListener('click', () => { iconField.value = 'none'; preview('', ''); say(''); });
     // the URL box stays out of the way until asked for
     document.getElementById('pin-icon-from-url').addEventListener('click', () => {
       iconUrlInput.hidden = !iconUrlInput.hidden;
@@ -301,6 +301,19 @@
       if (!item) return;
       e.preventDefault();
       uploadIcon(item.getAsFile());
+    });
+    // a new pin: the search starts the moment its URL is in
+    form.elements.link.addEventListener('change', () => {
+      if (form.elements.orig.value) return;
+      showIconRow(null);
+      if (iconHost) refetch();
+    });
+    // bookkeeping: whatever this dialog created and didn't save is deleted again
+    form.addEventListener('submit', () => { savedIcon = iconField.value; });
+    dialog.addEventListener('close', () => {
+      for (const k of created) if (k !== savedIcon) post({ action: 'discard', key: k }).catch(() => {});
+      created = new Set();
+      savedIcon = null;
     });
 
     // pinning claims the upload; closing without pinning deletes the orphan
@@ -520,10 +533,10 @@
       extEl.textContent = ext ? ext.textContent : '';
       const host = li.dataset.host;
       document.getElementById('review-domain').textContent = host.replace(/^www\./, '').replace('_', ':');
-      // the row already knows whether its host has an icon (and which version)
+      // the row already knows the pin's own icon key (and version), if any
       const icon = document.getElementById('review-icon');
       icon.hidden = true;
-      icon.src = li.dataset.icon ? `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(li.dataset.icon)}` : '';
+      icon.src = li.dataset.icon ? `/favicon/${encodeURIComponent(li.dataset.iconkey)}?v=${encodeURIComponent(li.dataset.icon)}` : '';
       document.getElementById('review-age').textContent = age(li.dataset.added);
       document.getElementById('review-tags').replaceChildren(...li.dataset.tags.split(/,\s*/).filter(Boolean).map(t => {
         const s = document.createElement('span'); s.textContent = `#${t}`; return s;

@@ -1,5 +1,8 @@
-// favicon.js — one cached site icon per domain under data/favicons/.
+// favicon.js — every pin owns its icon: a per-link file under data/favicons/ named
+// l_<id>.<ext>, referenced from the link's YAML as `icon`. Site icons are only a
+// cache (favicons/<host>.<ext>) that a search copies from.
 
+import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getDataDir } from './store.js';
@@ -16,31 +19,37 @@ const EXTS = new Set(Object.values(TYPES));
 const HOST_RE = /^(?=.{1,253}$)(?!localhost$)([a-z0-9-]+\.)+[a-z][a-z0-9-]*$/i;
 const fetchable = h => HOST_RE.test(String(h ?? ''));
 
-// The cache key for a link: hostname, plus "_port" so local dev apps on
-// different ports (localhost_7942) each keep their own icon.
+// The site-cache key for a link: hostname, plus "_port" so local dev apps on
+// different ports (localhost_7942) stay apart.
 export function iconKey(link) {
   try {
     const u = new URL(link);
     return (u.port ? `${u.hostname}_${u.port}` : u.hostname).toLowerCase();
   } catch { return ''; }
 }
-// A key is a safe filename stem: hostname characters plus an optional _port.
-const KEY_RE = /^(?=.{1,260}$)[a-z0-9](?:[a-z0-9-]*\.)*[a-z0-9-]+(?:_\d{1,5})?$/i;
-export function validKey(k) { return KEY_RE.test(String(k ?? '')); }
+// A per-link icon key: "l_" + 12 hex.
+const LINK_RE = /^l_[0-9a-f]{12}$/;
+export const isLinkKey = k => LINK_RE.test(String(k ?? ''));
+// A host key is a safe filename stem: hostname characters plus an optional _port.
+const HOSTKEY_RE = /^(?=.{1,260}$)[a-z0-9](?:[a-z0-9-]*\.)*[a-z0-9-]+(?:_\d{1,5})?$/i;
+export function validKey(k) { return isLinkKey(k) || HOSTKEY_RE.test(String(k ?? '')); }
+// What the pin dialog may store in the icon field: nothing, "none", or a link key.
+export const validIconField = v => v === '' || v === 'none' || isLinkKey(v);
 
 const dir = () => path.join(getDataDir(), 'favicons');
+const versionOf = st => Math.round(st.mtimeMs).toString(36);
 
-// The cached file for a host, if any — extension unknown until found.
-async function cached(host) {
+// The cached file for a key, if any — extension unknown until found.
+export async function iconFile(key) {
   for (const ext of EXTS) {
-    const f = path.join(dir(), `${host}.${ext}`);
+    const f = path.join(dir(), `${key}.${ext}`);
     try { await fsp.access(f); return f; } catch { /* next */ }
   }
   return null;
 }
 
 // A miss is remembered too (empty .none file), so a site with no icon isn't
-// re-fetched on every review; it's retried after a week.
+// re-fetched on every search; it's retried after a week.
 const missFile = host => path.join(dir(), `${host}.none`);
 async function recentMiss(host) {
   const st = await fsp.stat(missFile(host)).catch(() => null);
@@ -77,37 +86,34 @@ async function declaredIcon(host) {
   } catch { return null; }
 }
 
-// The user said "no icon for this site": permanent until they refetch or set one.
-const offFile = host => path.join(dir(), `${host}.off`);
-
-// Downloads one candidate image into the cache; null if it isn't a usable image.
-async function download(host, url) {
+// Downloads one candidate image to <key>.<ext>; null if it isn't a usable image.
+async function download(key, url) {
   try {
     const res = await fetchWithin(url, 4000, { accept: 'image/*' });
     const ext = TYPES[(res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()];
     if (!res.ok || !ext) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length || buf.length > MAX_BYTES) return null;
-    const file = path.join(dir(), `${host}.${ext}`);
+    await fsp.mkdir(dir(), { recursive: true });
+    const file = path.join(dir(), `${key}.${ext}`);
     await fsp.writeFile(file, buf);
     return file;
   } catch { return null; }
 }
 
-// The problem is a review card shows a bare domain, and a site's icon is what makes
-// it recognisable at a glance. The way we solve this is fetching the icon once per
-// domain — the page's declared one, else /favicon.ico — into data/favicons/, and
-// remembering misses so absent icons cost nothing next time. Returns a file path or null.
-// flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host -> siteIcon() <-- HERE
-// flow: pin dialog -> POST /add -> siteIcon() (prefetch, not awaited) <-- HERE
-export async function siteIcon(host) {
-  if (!validKey(host)) return null;
+// The problem is a site's icon is what makes a link recognisable, and it shouldn't
+// be fetched once per link. The way we solve this is a per-host cache — the page's
+// declared icon, else /favicon.ico — that link searches copy from; misses are
+// remembered so absent icons cost nothing next time. Returns a file path or null.
+// flow: icon search -> resolveLinkIcon -> siteIcon() <-- HERE
+export async function siteIcon(host, { fresh = false } = {}) {
+  if (!HOSTKEY_RE.test(host)) return null;
   host = host.toLowerCase();
-  const hit = await cached(host);
+  if (fresh) for (const ext of [...EXTS, 'none']) await fsp.rm(path.join(dir(), `${host}.${ext}`), { force: true });
+  const hit = await iconFile(host);
   if (hit) return hit;
-  // local / IP / port hosts can only get an icon by upload — never fetched
-  if (!fetchable(host)) return null;
-  if (await recentMiss(host) || await fsp.access(offFile(host)).then(() => true, () => false)) return null;
+  // local / IP / port hosts are never fetched — only a file or paste can give them an icon
+  if (!fetchable(host) || await recentMiss(host)) return null;
   await fsp.mkdir(dir(), { recursive: true });
   const candidates = [await declaredIcon(host), `https://${host}/favicon.ico`].filter(Boolean);
   for (const url of candidates) {
@@ -118,56 +124,69 @@ export async function siteIcon(host) {
   return null;
 }
 
-// Forget everything cached about a host: icon, miss marker, and "off" marker.
-async function clearIcon(host) {
-  for (const ext of [...EXTS, 'none', 'off']) await fsp.rm(path.join(dir(), `${host}.${ext}`), { force: true });
-}
+const newKey = () => `l_${crypto.randomBytes(6).toString('hex')}`;
+const result = async file => ({ icon: path.basename(file).split('.')[0], v: versionOf(await fsp.stat(file)) });
 
-// The problem is the automatic fetch can be wrong or blocked (a bot wall, a stale
-// icon), and some sites the user simply wants blank. The way we solve this is three
-// explicit verbs from the edit dialog: refetch from scratch, set from an image URL
-// the user found, or remove (and stop trying). Returns the new version, '' if none.
-// flow: edit dialog icon row -> POST /favicon -> editIcon() <-- HERE
-export async function editIcon(host, action, url) {
-  if (!validKey(host)) return null;
-  host = host.toLowerCase();
+// Copies any icon file into a brand-new per-link file — links never share a file.
+async function copyToLink(src) {
   await fsp.mkdir(dir(), { recursive: true });
-  await clearIcon(host);
-  let file = null;
-  if (action === 'refetch') file = await siteIcon(host);
-  else if (action === 'set') {
-    // the server does the download, so the image must live somewhere public —
-    // a localhost URL would point at the droplet, not the user's machine
-    try { const u = new URL(url); if (!fetchable(u.hostname)) return null; file = await download(host, u.href); } catch { file = null; }
-  }
-  else if (action === 'remove') await fsp.writeFile(offFile(host), '');
-  else return null;
-  return file ? versionOf(await fsp.stat(file)) : '';
+  const file = path.join(dir(), `${newKey()}${path.extname(src)}`);
+  await fsp.copyFile(src, file);
+  return result(file);
 }
 
-// The problem is some icons the server can't reach at all — local dev apps, sites
-// behind a login. The way we solve this is taking the image bytes from the user's
-// browser (file picker, paste, or a CORS-readable URL) and storing them exactly as
-// a fetched icon would be.
-// flow: edit dialog icon row "from file" / paste -> POST /favicon/upload -> storeIcon() <-- HERE
-export async function storeIcon(host, buf, contentType) {
-  if (!validKey(host)) return null;
+// The problem is a new pin should get an icon without the user doing anything. The
+// way we solve this is a two-step search: the site's icon (cached per host), else
+// the icon of another pin on the same site — either one copied into this link's
+// own file. Returns {icon, v} or null when nothing was found.
+// flow: pin dialog URL typed / ↻ refetch -> POST /favicon refetch -> resolveLinkIcon() <-- HERE
+// flow: terminal `pinz-admin icons` -> cmdIcons -> resolveLinkIcon() <-- HERE
+export async function resolveLinkIcon(link, doc, { fresh = false } = {}) {
+  const host = iconKey(link);
+  if (!host) return null;
+  const site = await siteIcon(host, { fresh });
+  if (site) return copyToLink(site);
+  for (const l of doc?.links ?? []) {
+    if (l.link === link || !isLinkKey(l.icon) || iconKey(l.link) !== host) continue;
+    const f = await iconFile(l.icon);
+    if (f) return copyToLink(f);
+  }
+  return null;
+}
+
+// The problem is the search can come up empty or wrong (a bot wall, a per-document
+// icon on SharePoint), and the user can usually get the image themselves. The way we
+// solve this is two more ways in: an image URL the server downloads (public hosts
+// only — a localhost URL would point at the droplet), or bytes the browser already
+// has (file picker, paste, CORS-readable URL). Both land in a new per-link file.
+// flow: edit dialog "from URL" -> POST /favicon set -> linkIconFromUrl() <-- HERE
+export async function linkIconFromUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!fetchable(u.hostname)) return null;
+    const file = await download(newKey(), u.href);
+    return file ? result(file) : null;
+  } catch { return null; }
+}
+// flow: edit dialog "from file" / paste -> POST /favicon/upload -> linkIconFromBytes() <-- HERE
+export async function linkIconFromBytes(buf, contentType) {
   const ext = TYPES[String(contentType ?? '').split(';')[0].trim().toLowerCase()];
   if (!ext || !buf?.length || buf.length > MAX_BYTES) return null;
-  host = host.toLowerCase();
   await fsp.mkdir(dir(), { recursive: true });
-  await clearIcon(host);
-  const file = path.join(dir(), `${host}.${ext}`);
+  const file = path.join(dir(), `${newKey()}.${ext}`);
   await fsp.writeFile(file, buf);
-  return versionOf(await fsp.stat(file));
+  return result(file);
 }
 
-const versionOf = st => Math.round(st.mtimeMs).toString(36);
+// Deletes a per-link icon file (a replaced icon, a deleted pin, a cancelled dialog).
+export async function removeLinkIcon(key) {
+  if (!isLinkKey(key)) return;
+  for (const ext of EXTS) await fsp.rm(path.join(dir(), `${key}.${ext}`), { force: true });
+}
 
-// The problem is icon URLs are cached by the browser for a month, so a replaced icon
-// would never show — and the page shouldn't probe for icons that don't exist. The way
-// we solve this is one directory read per page render: host → version (file mtime),
-// stamped into each link's URL and data attributes.
+// The problem is icon URLs are cached by the browser for a year, so a replaced icon
+// would never show. The way we solve this is one directory read per page render:
+// key → version (file mtime), stamped into each link's icon URL.
 // flow: GET / -> homepage handler -> iconVersions() <-- HERE -> homePage
 export async function iconVersions() {
   const map = new Map();

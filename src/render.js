@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { iconKey } from './favicon.js';
+import { iconKey, isLinkKey } from './favicon.js';
 
 // The problem is /static ships with a year of browser cache, so a deploy could
 // leave users on stale assets mismatched with fresh HTML. The way we solve this is
@@ -93,11 +93,12 @@ export function errorPage(message, status = 500) {
 // Each item carries its own data as attributes so the edit dialog can prefill
 // without another server round-trip. File pins get an extension marker and an
 // authed /file/ href; links keep their URL.
-// Versioned icon URL for a host, or '' when there's no cached icon.
-const iconUrl = (host, v) => v ? `/favicon/${encodeURIComponent(host)}?v=${encodeURIComponent(v)}` : '';
+// Versioned icon URL for a key, or '' when there's no such file.
+const iconUrl = (key, v) => v ? `/favicon/${encodeURIComponent(key)}?v=${encodeURIComponent(v)}` : '';
 
-// Every row keeps a fixed icon slot so titles line up whether or not the site
-// has an icon; the icons are desaturated in CSS to stay ink-coloured.
+// Every row keeps a fixed icon slot so titles line up whether or not the pin
+// has an icon; the icons are desaturated in CSS to stay ink-coloured. A pin
+// shows only its own icon (l.icon) — sites are just where a search looks.
 function linkItem(l, icons) {
   const isFile = !!l.file;
   const fileName = isFile ? l.file.split('/').pop().replace(/^\d+-/, '') : '';
@@ -105,14 +106,15 @@ function linkItem(l, icons) {
   const href = isFile ? `/file/${l.file.split('/').map(encodeURIComponent).join('/')}` : l.link;
   const ext = isFile ? (fileName.split('.').pop() ?? '').slice(0, 5).toUpperCase() : '';
   const host = l.link ? iconKey(l.link) : '';
-  const v = icons.get(host) ?? '';
-  const icon = v ? `<img class="icon" src="${escapeHtml(iconUrl(host, v))}" alt="" loading="lazy">` : '<i class="icon"></i>';
+  const key = isLinkKey(l.icon) ? l.icon : '';
+  const v = key ? icons.get(key) ?? '' : '';
+  const icon = v ? `<img class="icon" src="${escapeHtml(iconUrl(key, v))}" alt="" loading="lazy">` : '<i class="icon"></i>';
   // Search matches what the eye sees: the displayed text plus tags — not the
   // URL, which matched all sorts of things the user never typed.
   const search = [text, ...l.tags].join(' ').toLowerCase();
   // Same-tab on purpose: pinz is a start page, so a click hands the tab over
   // to the link (cmd/ctrl-click still opens a new one).
-  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-added="${escapeHtml(l.added ?? '')}" data-host="${escapeHtml(host)}" data-icon="${escapeHtml(v)}" data-search="${escapeHtml(search)}">${icon}${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
+  return `<li${l.done ? ' class="done"' : ''} data-link="${escapeHtml(l.link ?? '')}" data-file="${escapeHtml(l.file ?? '')}" data-title="${escapeHtml(l.title ?? '')}" data-tags="${escapeHtml(l.tags.join(', '))}" data-done="${l.done ? '1' : ''}" data-added="${escapeHtml(l.added ?? '')}" data-host="${escapeHtml(host)}" data-iconkey="${escapeHtml(l.icon ?? '')}" data-icon="${escapeHtml(v)}" data-search="${escapeHtml(search)}">${icon}${ext ? `<span class="ext">${escapeHtml(ext)}</span>` : ''}<a href="${escapeHtml(href)}">${escapeHtml(text)}</a><button type="button" class="edit quiet" aria-label="edit ${escapeHtml(text)}">✎</button></li>`;
 }
 
 // One collapsible "> #tag" section; server renders collapsed, client restores state.
@@ -186,6 +188,7 @@ ${archived.map(l => linkItem(l, icons)).join('\n')}
     <h2 id="pin-heading">pin a link</h2>
     <input type="hidden" name="orig" value="">
     <input type="hidden" name="file" value="">
+    <input type="hidden" name="icon" value="">
     <p id="pin-file-row" hidden><span class="ext" id="pin-file-ext"></span> <span id="pin-file-name"></span> <a id="pin-file-download" href="" class="quiet">download</a></p>
     <input id="add-link" name="link" type="url" placeholder="https://…" required>
     <input id="add-title" name="title" placeholder="title (optional — fetched if blank)">

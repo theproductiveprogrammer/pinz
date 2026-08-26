@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { requireAuth, handleLogin, handleLogout } from './auth.js';
 import fsp from 'node:fs/promises';
-import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, NoUserFileError } from './store.js';
+import { loadUserDoc, addLink, editLink, addFilePin, deletePin, groupByTag, getDataDir, normalizeTag, mutateUserDoc, pinKey, NoUserFileError } from './store.js';
 import { homePage, loginPage, errorPage } from './render.js';
 import { fetchTitle } from './title.js';
 import { webPicture, pictureVersion } from './image.js';
-import { siteIcon, editIcon, storeIcon, iconVersions, iconKey, validKey } from './favicon.js';
+import { resolveLinkIcon, linkIconFromUrl, linkIconFromBytes, removeLinkIcon, iconFile, iconVersions, validKey, validIconField, isLinkKey } from './favicon.js';
 
 // The picture path comes from a hand-editable YAML, so it's only trusted once
 // resolved and proven to sit inside the data dir. Returns null for none/unsafe.
@@ -79,10 +79,13 @@ export function createApp() {
   // tag with a space in it (tags are hashtag-shaped, never multi-word).
   function pinFields(body) {
     const url = parseHttpUrl(body?.link);
+    const icon = String(body?.icon ?? '');
     return url && {
       link: url.href,
       title: String(body?.title ?? '').trim(),
       tags: String(body?.tags ?? '').split(/[\s,]+/).map(normalizeTag).filter(Boolean),
+      // the dialog's icon field: a per-link key, "none", or '' (nothing chosen)
+      icon: validIconField(icon) ? icon : '',
     };
   }
 
@@ -100,8 +103,17 @@ export function createApp() {
     const fields = pinFields(req.body);
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const result = await addLink(req.user, fields);
-    // warm the icon cache now so the review card never waits on it; never awaited
-    siteIcon(iconKey(fields.link)).catch(() => {});
+    // The dialog normally searched for an icon already; if it didn't (no JS, or the
+    // search hadn't finished), search now in the background and fill it in.
+    if (result === 'ok' && !fields.icon) {
+      loadUserDoc(req.user)
+        .then(doc => resolveLinkIcon(fields.link, doc))
+        .then(r => r && mutateUserDoc(req.user, doc => {
+          const e = doc.links.find(l => l.link === fields.link);
+          if (e && !e.icon) e.icon = r.icon; else return false;
+        }))
+        .catch(() => {});
+    }
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'restored'}=1`);
   }));
 
@@ -121,7 +133,11 @@ export function createApp() {
     if (!fields) return res.status(400).send(errorPage('Only http(s) URLs can be pinned.'));
     const action = String(req.body?.action ?? 'save');
     const done = action === 'done' ? true : action === 'restore' ? false : undefined;
-    const result = await editLink(req.user, String(req.body?.orig ?? ''), { ...fields, done });
+    const orig = String(req.body?.orig ?? '');
+    const prevIcon = (await loadUserDoc(req.user)).links.find(l => pinKey(l) === orig)?.icon;
+    const result = await editLink(req.user, orig, { ...fields, done });
+    // a replaced per-link icon leaves the disk with the old value
+    if (result === 'ok' && fields.icon !== undefined && prevIcon !== fields.icon) await removeLinkIcon(prevIcon);
     res.redirect(303, result === 'ok' ? '/' : `/?${result === 'duplicate' ? 'dup' : 'missing'}=1`);
   }));
 
@@ -166,7 +182,9 @@ export function createApp() {
   app.post('/delete', wrap(requireAuth), wrap(async (req, res) => {
     const key = String(req.body?.key ?? '');
     if (!key) return res.status(400).end();
+    const icon = (await loadUserDoc(req.user)).links.find(l => pinKey(l) === key)?.icon;
     await deletePin(req.user, key);
+    await removeLinkIcon(icon);
     // orphans (uploaded but never pinned) have no entry — remove the file itself too
     const rel = ownFilePath(req.user, key);
     if (rel) await fsp.unlink(path.join(getDataDir(), rel)).catch(() => {});
@@ -205,41 +223,54 @@ export function createApp() {
     res.sendFile(out, err => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
-  // The problem is a site icon is shared by every link on that domain and never
-  // changes in practice. The way we solve this is one route keyed by hostname that
-  // serves the cached file (fetching it the first time) with a month of browser
-  // cache; a miss is a 404 the card quietly hides.
-  // flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
-  app.get('/favicon/:host', wrap(requireAuth), wrap(async (req, res) => {
-    if (!validKey(req.params.host)) return res.status(400).end();
-    const file = await siteIcon(req.params.host);
-    // a miss is cached a day too, so the card doesn't re-ask for icons that don't exist
+  // The problem is every pin's icon is its own small file, and the browser should be
+  // able to keep it forever. The way we solve this is one route keyed by icon key
+  // (per-link, or a cached site icon) whose versioned URLs are immutable.
+  // flow: board row / review card <img src="/favicon/<key>?v=…"> -> GET /favicon/:key <-- HERE
+  app.get('/favicon/:key', wrap(requireAuth), wrap(async (req, res) => {
+    if (!validKey(req.params.key)) return res.status(400).end();
+    const file = await iconFile(req.params.key);
     if (!file) { res.setHeader('Cache-Control', 'private, max-age=86400'); return res.status(404).end(); }
-    // versioned URLs (from the page) change whenever the icon does: cache them for good
-    res.setHeader('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, max-age=2592000');
+    res.setHeader('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, max-age=3600');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // an svg icon is a document if opened directly; sandboxed, it can't run anything
     if (file.endsWith('.svg')) res.setHeader('Content-Security-Policy', "sandbox; script-src 'none'");
     res.sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
-  // flow: edit dialog icon row (refetch / set URL / remove) -> POST /favicon <-- HERE -> editIcon
+  // The problem is the pin dialog needs to find, replace, or throw away an icon
+  // before the pin itself is saved. The way we solve this is three verbs that each
+  // produce (or delete) a per-link file and answer {icon, v}: refetch (site icon,
+  // else a same-site pin's icon), set (an image URL), discard (a file the dialog
+  // created but didn't keep — refused if any pin references it).
+  // flow: edit dialog icon row -> POST /favicon <-- HERE -> resolveLinkIcon | linkIconFromUrl | removeLinkIcon
   app.post('/favicon', wrap(requireAuth), wrap(async (req, res) => {
-    const host = String(req.body?.host ?? '');
     const action = String(req.body?.action ?? '');
-    if (!validKey(host) || !['refetch', 'set', 'remove'].includes(action)) return res.status(400).end();
-    const v = await editIcon(host, action, String(req.body?.url ?? ''));
-    if (v === null) return res.status(400).end();
-    res.json({ v });
+    if (action === 'refetch') {
+      const url = parseHttpUrl(req.body?.link);
+      if (!url) return res.status(400).end();
+      const r = await resolveLinkIcon(url.href, await loadUserDoc(req.user), { fresh: true });
+      return res.json(r ?? { icon: '', v: '' });
+    }
+    if (action === 'set') {
+      const r = await linkIconFromUrl(String(req.body?.url ?? ''));
+      return r ? res.json(r) : res.status(400).end();
+    }
+    if (action === 'discard') {
+      const key = String(req.body?.key ?? '');
+      if (!isLinkKey(key)) return res.status(400).end();
+      const used = (await loadUserDoc(req.user)).links.some(l => l.icon === key);
+      if (!used) await removeLinkIcon(key);
+      return res.status(204).end();
+    }
+    res.status(400).end();
   }));
 
-  // flow: edit dialog icon row "from file" / paste / CORS-readable URL -> POST /favicon/upload <-- HERE -> storeIcon
+  // flow: edit dialog icon row "from file" / paste / CORS-readable URL -> POST /favicon/upload <-- HERE -> linkIconFromBytes
   app.post('/favicon/upload', wrap(requireAuth), express.raw({ type: () => true, limit: '512kb' }), wrap(async (req, res) => {
-    const host = String(req.query.host ?? '');
-    if (!validKey(host)) return res.status(400).end();
-    const v = await storeIcon(host, req.body, req.headers['content-type']);
-    if (v === null) return res.status(400).end();
-    res.json({ v });
+    const r = await linkIconFromBytes(req.body, req.headers['content-type']);
+    if (!r) return res.status(400).end();
+    res.json(r);
   }));
 
   // flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle

@@ -165,7 +165,7 @@ export function mutateUsers(mutate) {
 // this is checking for the URL inside the write lock: an active twin skips the
 // append, an archived twin is restored instead.
 // flow: pin dialog -> POST /add -> addLink() <-- HERE
-export function addLink(username, { link, title, tags }) {
+export function addLink(username, { link, title, tags, icon }) {
   let result = 'ok';
   return mutateUserDoc(username, doc => {
     const twin = doc.links.find(l => l.link === link);
@@ -175,6 +175,7 @@ export function addLink(username, { link, title, tags }) {
       link,
       title: title || '',
       tags: [...new Set(tags.map(normalizeTag).filter(Boolean))],
+      ...(icon ? { icon } : {}),
       added: new Date().toISOString(),
     });
     return doc;
@@ -187,7 +188,7 @@ export function addLink(username, { link, title, tags }) {
 // the write lock, applying the new fields, and setting/clearing a `done` timestamp
 // for complete/restore. File pins keep their file — only link entries change URL.
 // flow: edit dialog -> POST /edit -> editLink() <-- HERE
-export function editLink(username, orig, { link, title, tags, done }) {
+export function editLink(username, orig, { link, title, tags, done, icon }) {
   let result = 'ok';
   return mutateUserDoc(username, doc => {
     const entry = doc.links.find(l => pinKey(l) === orig);
@@ -198,6 +199,8 @@ export function editLink(username, orig, { link, title, tags, done }) {
     }
     entry.title = title;
     entry.tags = [...new Set(tags.map(normalizeTag).filter(Boolean))];
+    // icon: a per-link key, "none" (user removed it), or '' to clear; undefined leaves it
+    if (icon !== undefined) { if (icon) entry.icon = icon; else delete entry.icon; }
     if (done === true && !entry.done) entry.done = new Date().toISOString();
     if (done === false) delete entry.done;
     return doc;

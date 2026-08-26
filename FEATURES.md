@@ -7,7 +7,7 @@ Every non-utility function carries a `flow:` comment anchoring it to a
 user action; this index is harvested from those. A feature missing here
 means a function missing its flow line.
 
-66 flows indexed.
+68 flows indexed.
 
 ## .
 
@@ -16,20 +16,23 @@ means a function missing its flow line.
 
 ## bin
 
-- `cmdUserAdd` — bin/pinz-admin.js:62
+- `cmdUserAdd` — bin/pinz-admin.js:63
   - flow: terminal — admin runs `pinz-admin user add <name>` to create an account <-- HERE
-- `cmdUserPasswd` — bin/pinz-admin.js:75
+- `cmdUserPasswd` — bin/pinz-admin.js:76
   - flow: terminal — `pinz-admin user passwd <name>` <-- HERE
-- `cmdUserList` — bin/pinz-admin.js:85
+- `cmdUserList` — bin/pinz-admin.js:86
   - flow: terminal — `pinz-admin user list` <-- HERE
-- `cmdUserRm` — bin/pinz-admin.js:92
+- `cmdUserRm` — bin/pinz-admin.js:93
   - flow: terminal — `pinz-admin user rm <name>` <-- HERE
-- `cmdImageSet` — bin/pinz-admin.js:101
+- `cmdImageSet` — bin/pinz-admin.js:102
   - flow: terminal — `pinz-admin image set <name> <file>` <-- HERE
-- `cmdImageOptimize` — bin/pinz-admin.js:114
+- `cmdImageOptimize` — bin/pinz-admin.js:115
   - flow: terminal — `pinz-admin image optimize [name]` shrinks stored pictures <-- HERE
-- `cmdImagePosition` — bin/pinz-admin.js:130
+- `cmdImagePosition` — bin/pinz-admin.js:131
   - flow: terminal — `pinz-admin image position <name> "50% 20% [64px 64px]"` <-- HERE
+- `cmdIcons` — bin/pinz-admin.js:146
+  - flow: terminal — `pinz-admin icons [name]` <-- HERE -> resolveLinkIcon
+  - problem: pins made before per-link icons existed have none.
 
 ## chrome-tab-extension
 
@@ -44,35 +47,36 @@ means a function missing its flow line.
   - flow: main screen loads -> static/app.js registers -> GET /sw.js <-- HERE
 - (module) — src/app.js:68
   - flow: main screen — GET / <-- HERE -> loadUserDoc -> groupByTag -> homePage
-- (module) — src/app.js:89
+- (module) — src/app.js:92
   - flow: pin dialog (new link or uploaded file) -> POST /add <-- HERE -> addLink | addFilePin
-- (module) — src/app.js:112
+- (module) — src/app.js:124
   - flow: pin dialog (editing) -> POST /edit <-- HERE -> editLink -> redirect /
   - problem: fixing a pin's fields and completing/restoring it are one dialog to the user.
-- (module) — src/app.js:132
+- (module) — src/app.js:148
   - flow: file dropped on the page -> static/app.js -> POST /upload <-- HERE -> pin dialog
   - problem: dropped documents need somewhere to live before they're pinned.
-- (module) — src/app.js:147
+- (module) — src/app.js:163
   - flow: file pin clicked -> GET /file/* <-- HERE
   - problem: pinned documents are as private as the bookmarks.
-- (module) — src/app.js:165
+- (module) — src/app.js:181
   - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete <-- HERE -> deletePin
-- (module) — src/app.js:179
+- (module) — src/app.js:197
   - flow: user drags the photo, drops it -> static/app.js -> POST /image-position <-- HERE
   - problem: placing the photo by typing "X% Y%" numbers is guesswork; dragging it is the honest interface.
-- (module) — src/app.js:192
+- (module) — src/app.js:210
   - flow: main screen <img src="/img?v=…"> -> GET /img <-- HERE -> webPicture
   - problem: the profile picture lives under data/, which is private, and the original is far too big to ship.
-- (module) — src/app.js:212
-  - flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host <-- HERE -> siteIcon
-  - problem: a site icon is shared by every link on that domain and never changes in practice.
-- (module) — src/app.js:226
-  - flow: edit dialog icon row (refetch / set URL / remove) -> POST /favicon <-- HERE -> editIcon
-- (module) — src/app.js:236
-  - flow: edit dialog icon row "from file" / paste / CORS-readable URL -> POST /favicon/upload <-- HERE -> storeIcon
-- (module) — src/app.js:245
+- (module) — src/app.js:229
+  - flow: board row / review card <img src="/favicon/<key>?v=…"> -> GET /favicon/:key <-- HERE
+  - problem: every pin's icon is its own small file, and the browser should be able to keep it forever.
+- (module) — src/app.js:246
+  - flow: edit dialog icon row -> POST /favicon <-- HERE -> resolveLinkIcon | linkIconFromUrl | removeLinkIcon
+  - problem: the pin dialog needs to find, replace, or throw away an icon before the pin itself is saved.
+- (module) — src/app.js:269
+  - flow: edit dialog icon row "from file" / paste / CORS-readable URL -> POST /favicon/upload <-- HERE -> linkIconFromBytes
+- (module) — src/app.js:276
   - flow: add form title blank -> static/app.js fetch -> GET /title <-- HERE -> fetchTitle
-- (module) — src/app.js:254
+- (module) — src/app.js:285
   - flow: any thrown handler error -> errorBoundary() <-- HERE
   - problem: data-file trouble (bad YAML, missing file) must read as a clear message, never a stack trace.
 - `initSecret` — src/auth.js:19
@@ -86,21 +90,23 @@ means a function missing its flow line.
   - problem: turning a correct password into a browser session, giving nothing away on failure.
 - `handleLogout` — src/auth.js:106
   - flow: header log-out button -> POST /logout -> handleLogout() <-- HERE
-- `siteIcon` — src/favicon.js:103
-  - flow: review card <img src="/favicon/<host>"> -> GET /favicon/:host -> siteIcon() <-- HERE
-  - problem: a review card shows a bare domain, and a site's icon is what makes it recognisable at a glance.
-- `siteIcon` — src/favicon.js:103
-  - flow: pin dialog -> POST /add -> siteIcon() (prefetch, not awaited) <-- HERE
-  - problem: a review card shows a bare domain, and a site's icon is what makes it recognisable at a glance.
-- `editIcon` — src/favicon.js:131
-  - flow: edit dialog icon row -> POST /favicon -> editIcon() <-- HERE
-  - problem: the automatic fetch can be wrong or blocked (a bot wall, a stale icon), and some sites the user simply wants blank.
-- `storeIcon` — src/favicon.js:153
-  - flow: edit dialog icon row "from file" / paste -> POST /favicon/upload -> storeIcon() <-- HERE
-  - problem: some icons the server can't reach at all — local dev apps, sites behind a login.
-- `iconVersions` — src/favicon.js:172
+- `siteIcon` — src/favicon.js:109
+  - flow: icon search -> resolveLinkIcon -> siteIcon() <-- HERE
+  - problem: a site's icon is what makes a link recognisable, and it shouldn't be fetched once per link.
+- `resolveLinkIcon` — src/favicon.js:144
+  - flow: pin dialog URL typed / ↻ refetch -> POST /favicon refetch -> resolveLinkIcon() <-- HERE
+  - problem: a new pin should get an icon without the user doing anything.
+- `resolveLinkIcon` — src/favicon.js:144
+  - flow: terminal `pinz-admin icons` -> cmdIcons -> resolveLinkIcon() <-- HERE
+  - problem: a new pin should get an icon without the user doing anything.
+- `linkIconFromUrl` — src/favicon.js:163
+  - flow: edit dialog "from URL" -> POST /favicon set -> linkIconFromUrl() <-- HERE
+  - problem: the search can come up empty or wrong (a bot wall, a per-document icon on SharePoint), and the user can usually get the image themselves.
+- `linkIconFromBytes` — src/favicon.js:172
+  - flow: edit dialog "from file" / paste -> POST /favicon/upload -> linkIconFromBytes() <-- HERE
+- `iconVersions` — src/favicon.js:191
   - flow: GET / -> homepage handler -> iconVersions() <-- HERE -> homePage
-  - problem: icon URLs are cached by the browser for a month, so a replaced icon would never show — and the page shouldn't probe for icons that don't exist.
+  - problem: icon URLs are cached by the browser for a year, so a replaced icon would never show.
 - `webPicture` — src/image.js:15
   - flow: main screen <img src="/img?v=…"> -> GET /img -> webPicture() <-- HERE
   - problem: uploaded pictures are phone-sized originals (0.3–2.3 MB) and, over a long-haul link, they alone cost seconds.
@@ -114,7 +120,7 @@ means a function missing its flow line.
   - flow: GET /login and failed POST /login -> loginPage() <-- HERE
 - `errorPage` — src/render.js:84
   - flow: any handler error (bad YAML, missing data file, bad input) -> errorPage() <-- HERE
-- `homePage` — src/render.js:154
+- `homePage` — src/render.js:156
   - flow: main screen — GET / -> homePage() <-- HERE
   - problem: the whole app is one screen: date, search, the pin/edit dialog, and the user's links grouped under collapsible tags with the archive at the bottom and their picture alongside.
 - `loadYaml` — src/store.js:29
@@ -146,16 +152,16 @@ means a function missing its flow line.
 - `addLink` — src/store.js:168
   - flow: pin dialog -> POST /add -> addLink() <-- HERE
   - problem: the user adds a link once and expects it pinned exactly once — but re-pinning something they archived means they want it back.
-- `editLink` — src/store.js:190
+- `editLink` — src/store.js:191
   - flow: edit dialog -> POST /edit -> editLink() <-- HERE
   - problem: a pin's URL, title, or tags may need fixing, and finishing with a pin should archive it, not delete it (links are never lost).
-- `addFilePin` — src/store.js:211
+- `addFilePin` — src/store.js:214
   - flow: file dropped -> POST /upload -> pin dialog -> POST /add -> addFilePin() <-- HERE
   - problem: an uploaded document needs to become a pin like any link.
-- `deletePin` — src/store.js:228
+- `deletePin` — src/store.js:231
   - flow: edit dialog "✕ delete" (or a cancelled upload) -> POST /delete -> deletePin() <-- HERE
   - problem: some pins deserve true removal, not archiving — files cost disk, and dead links are clutter the archive shouldn't have to keep.
-- `groupByTag` — src/store.js:247
+- `groupByTag` — src/store.js:250
   - flow: GET / -> homepage handler -> groupByTag() <-- HERE
   - problem: the page shows links grouped by tag in the user's preferred order, not in YAML storage order, and completed links belong in the archive, not here.
 - `fetchTitle` — src/title.js:7
@@ -173,25 +179,25 @@ means a function missing its flow line.
 - (module) — static/app.js:182
   - flow: edit dialog -> "✕ delete" -> POST /delete
   - problem: archive keeps everything, and some pins should truly go — files cost disk, dead links are clutter.
-- `iconRow` — static/app.js:203
-  - flow: edit dialog icon row -> POST /favicon | /favicon/upload -> paintIcon() <-- HERE
-  - problem: the automatic site icon can be missing, stale, or unreachable from the server (a bot wall, a local dev app), and the user can usually get the image themselves.
-- (module) — static/app.js:313
+- `iconRow` — static/app.js:204
+  - flow: pin dialog icon row -> POST /favicon | /favicon/upload -> hidden icon field -> POST /add | /edit
+  - problem: every pin owns its icon, but the user shouldn't have to find one.
+- (module) — static/app.js:326
   - flow: review card ✎ -> edit dialog save/archive -> POST /edit (fetch) <-- HERE -> applyPage
   - problem: a save from inside review mode must not reload the page — that would throw the deck away.
-- `addEventListener` — static/app.js:355
+- `addEventListener` — static/app.js:368
   - flow: OS file dropped on the page -> uploadFile -> POST /upload -> openDialog(file mode)
   - problem: getting a document in should be as direct as dragging the photo around.
-- (module) — static/app.js:380
+- (module) — static/app.js:393
   - flow: main screen — user drags the photo or its corner -> POST /image-position
   - problem: placing and sizing the photo by editing numbers is guesswork.
-- `applyPage` — static/app.js:431
+- `applyPage` — static/app.js:444
   - flow: new tab -> sw.js pageResponse -> postMessage -> refresh() <-- HERE
   - problem: from far away every network round trip is a quarter second, and a start page should be up before the hand leaves the keyboard.
-- `review` — static/app.js:463
+- `review` — static/app.js:476
   - flow: main screen — "review" button -> startReview() <-- HERE -> showCard -> window.open
   - problem: links pile up faster than they're read, and scanning a long list never answers "is this still worth opening?".
-- `editBtn` — static/app.js:576
+- `editBtn` — static/app.js:589
   - flow: review card ✎ (or "e") -> editCurrent() <-- HERE -> openDialog -> dialog close -> startReview
   - problem: a card sometimes needs fixing (retag, retitle, archive, delete) right there, and the edit dialog already does all of that.
 - `pageResponse` — static/sw.js:51

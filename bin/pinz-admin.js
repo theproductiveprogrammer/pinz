@@ -10,6 +10,7 @@ import {
   mutateUsers, mutateUserDoc,
 } from '../src/store.js';
 import { optimizePicture } from '../src/image.js';
+import { resolveLinkIcon } from '../src/favicon.js';
 
 const kb = n => `${Math.round(n / 1024)} KB`;
 
@@ -138,6 +139,28 @@ async function cmdImagePosition(username, pos) {
   console.log(`picture position set: ${tokens.join(' ')}`);
 }
 
+// The problem is pins made before per-link icons existed have none. The way we
+// solve this is running the same search the dialog runs — site icon, else a
+// same-site pin's icon — for every link without one, and saving what it finds.
+// flow: terminal — `pinz-admin icons [name]` <-- HERE -> resolveLinkIcon
+async function cmdIcons(username) {
+  const users = username ? [await findUser(username) ?? die(`no such user "${username}"`)] : await loadUsers();
+  for (const u of users) {
+    const doc = await loadUserDoc(u.username).catch(() => null);
+    if (!doc) continue;
+    let found = 0, missing = 0;
+    for (const l of doc.links) {
+      if (!l.link || l.icon) continue;
+      const r = await resolveLinkIcon(l.link, doc);
+      if (!r) { missing++; continue; }
+      found++;
+      await mutateUserDoc(u.username, d => { const e = d.links.find(x => x.link === l.link); if (e && !e.icon) e.icon = r.icon; else return false; });
+      l.icon = r.icon; // so later same-site links can copy from it
+    }
+    console.log(`${u.username}\t${found} icons found, ${missing} links without`);
+  }
+}
+
 function usage() {
   console.log(`usage: pinz-admin [--data <dir>] <command>
 
@@ -147,7 +170,8 @@ function usage() {
   user rm <username>             remove an account (data file kept)
   image set <username> <file>    copy an image into data/ (shrunk to ≤2000px) and use it
   image position <username> "<x y [w h]>"   place (and size) the image, e.g. "50% 20% 64px 64px"
-  image optimize [username]      shrink stored pictures in place (.bak kept) and prebuild web copies`);
+  image optimize [username]      shrink stored pictures in place (.bak kept) and prebuild web copies
+  icons [username]               find icons for links that have none (site icon, else a same-site pin's)`);
   process.exit(2);
 }
 
@@ -163,8 +187,10 @@ const commands = {
   'image set': cmdImageSet,
   'image position': cmdImagePosition,
   'image optimize': cmdImageOptimize,
+  icons: cmdIcons,
 };
-const cmd = commands[argv.slice(0, 2).join(' ')];
+const two = commands[argv.slice(0, 2).join(' ')];
+const cmd = two ?? commands[argv[0]];
 if (!cmd) usage();
-await cmd(...argv.slice(2));
+await cmd(...argv.slice(two ? 2 : 1));
 process.exit(0);
